@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 16;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 18;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -932,6 +932,7 @@ function setTx(latlng) {
 
 map.on("click", e => {
   if (Date.now() - lastLinkClick < 300) return;    // click landed on a link line
+  if (proposing) { proposing = false; beginPotentialForm(e.latlng); return; }
   if (mode === "network") { addSite(e.latlng); return; }
   if (!txLatLng) setTx(e.latlng);
   else if (lastResult) inspectPoint(e.latlng);
@@ -1539,6 +1540,153 @@ $("meshCovBtn").addEventListener("click", () => {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");
   });
+});
+
+// ------------------------------------ community potential sites (D1-backed)
+
+let potentialSites = [];
+let proposing = false;
+let pendingPot = null;            // {latlng, marker} while the form is open
+const potentialLayer = L.layerGroup();
+
+const potIcon = (status = "idea") => L.divIcon({
+  className: `pot-icon pot-${status}`, html: "P",
+  iconSize: [24, 24], iconAnchor: [12, 12] });
+
+async function loadPotentialSites() {
+  const r = await fetch("/api/potential-sites");
+  if (!r.ok) throw new Error("could not load potential sites");
+  potentialSites = (await r.json()).sites;
+  potentialLayer.clearLayers();
+  potentialSites.forEach((ps, i) => {
+    L.marker([ps.lat, ps.lon], { icon: potIcon(ps.status) }).bindPopup(() =>
+      `<b>${escapeHtml(ps.name)}</b> — <b>${escapeHtml(ps.status)}</b><br>` +
+      (ps.notes ? `${escapeHtml(ps.notes)}<br>` : "") +
+      `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · ${ps.height_m} m planned<br>` +
+      `<span class="sub">added ${String(ps.created_at).slice(0, 10)}` +
+      (ps.submitted_by ? ` by ${escapeHtml(ps.submitted_by)}` : "") +
+      ` · ${ps.note_count || 0} update${ps.note_count === 1 ? "" : "s"}</span><br>` +
+      `<button onclick="window.__potNotes(${i})">Updates / add note</button>` +
+      `<button onclick="window.__potCov(${i})">Show coverage</button>` +
+      `<button onclick="window.__potAdd(${i})">Add as site</button>`
+    ).addTo(potentialLayer);
+  });
+  if (!map.hasLayer(potentialLayer)) potentialLayer.addTo(map);
+  return potentialSites.length;
+}
+
+window.__potCov = i => {
+  const ps = potentialSites[i];
+  if (!ps) return;
+  window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
+};
+window.__potAdd = i => {
+  const ps = potentialSites[i];
+  if (!ps) return;
+  map.closePopup();
+  addSite(L.latLng(ps.lat, ps.lon), ps.height_m, +$("repGain").value);
+};
+
+window.__potNotes = async i => {
+  const ps = potentialSites[i];
+  if (!ps) return;
+  try {
+    const r = await fetch(`/api/potential-sites/${ps.id}/notes`);
+    const thread = (await r.json()).notes || [];
+    const lines = thread.map(n =>
+      `${String(n.created_at).slice(0, 10)} ${n.author ? n.author + ": " : ""}${n.note}`);
+    const existing = lines.length
+      ? `Updates on "${ps.name}":\n\n${lines.join("\n")}\n\n`
+      : `No updates yet on "${ps.name}".\n\n`;
+    const note = prompt(existing +
+      "Add an update (e.g. \"talked to the manager, wants a one-pager\") — or Cancel:");
+    if (!note || !note.trim()) return;
+    const status = prompt(
+      "New status? idea / scouted / contacted / approved / declined\n" +
+      `(blank keeps "${ps.status}")`, "");
+    const author = prompt("Your name (optional):", "") || "";
+    const pr = await fetch(`/api/potential-sites/${ps.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note.trim(), author: author.trim(),
+                             status: (status || "").trim().toLowerCase() }),
+    });
+    if (!pr.ok) throw new Error((await pr.json()).error || `HTTP ${pr.status}`);
+    map.closePopup();
+    await loadPotentialSites();
+    statusEl.textContent = `Update saved on "${ps.name}".`;
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  }
+};
+
+$("potShowBtn").addEventListener("click", () => {
+  if (map.hasLayer(potentialLayer) && potentialSites.length) {
+    map.removeLayer(potentialLayer);
+    $("potShowBtn").textContent = "Show potential sites";
+    return;
+  }
+  loadPotentialSites().then(n => {
+    $("potShowBtn").textContent = "Hide potential sites";
+    statusEl.textContent = `${n} community potential sites loaded.`;
+  }).catch(err => {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  });
+});
+
+$("potProposeBtn").addEventListener("click", () => {
+  proposing = true;
+  statusEl.classList.remove("error");
+  statusEl.textContent = "Click the map where the potential site is.";
+});
+
+function beginPotentialForm(latlng) {
+  if (pendingPot) map.removeLayer(pendingPot.marker);
+  pendingPot = { latlng, marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
+  $("potForm").hidden = false;
+  $("potName").focus();
+  statusEl.textContent = `Proposing site at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} — fill in the form.`;
+}
+
+function cancelPotentialForm() {
+  if (pendingPot) map.removeLayer(pendingPot.marker);
+  pendingPot = null;
+  proposing = false;
+  $("potForm").hidden = true;
+}
+
+$("potCancelBtn").addEventListener("click", cancelPotentialForm);
+
+$("potSaveBtn").addEventListener("click", async () => {
+  if (!pendingPot) return;
+  const name = $("potName").value.trim();
+  if (!name) { statusEl.textContent = "Give the site a name."; return; }
+  try {
+    const r = await fetch("/api/potential-sites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        notes: $("potNotes").value.trim(),
+        lat: pendingPot.latlng.lat,
+        lon: pendingPot.latlng.lng,
+        height_m: +$("potHeight").value,
+        status: $("potStatus").value,
+        submitted_by: $("potBy").value.trim(),
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+    cancelPotentialForm();
+    $("potName").value = ""; $("potNotes").value = "";
+    await loadPotentialSites();
+    $("potShowBtn").textContent = "Hide potential sites";
+    statusEl.textContent = `Saved — thanks! ${potentialSites.length} potential sites now shared.`;
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  }
 });
 
 // ------------------------------------------------------------ address search

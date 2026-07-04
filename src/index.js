@@ -11,9 +11,101 @@ const EDGE_TTL = 60 * 60 * 24 * 30;     // 30 days — SRTM terrain doesn't chan
 const BROWSER_TTL = 60 * 60 * 24 * 7;
 const MESH_API = "https://scope.digitaino.com/api/nodes?limit=1000";
 
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+const json = (data, status = 200) => new Response(JSON.stringify(data), {
+  status, headers: { "Content-Type": "application/json" },
+});
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
+
+    // Community-identified potential repeater sites, persisted in D1.
+    if (url.pathname === "/api/potential-sites") {
+      if (request.method === "GET") {
+        const { results } = await env.DB.prepare(
+          "SELECT s.id, s.name, s.notes, s.lat, s.lon, s.height_m, s.status, " +
+          "s.submitted_by, s.created_at, COUNT(n.id) AS note_count " +
+          "FROM potential_sites s LEFT JOIN potential_site_notes n ON n.site_id = s.id " +
+          "GROUP BY s.id ORDER BY s.created_at DESC LIMIT 500").all();
+        return json({ sites: results });
+      }
+      if (request.method === "POST") {
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+        const name = String(body.name || "").trim().slice(0, 60);
+        const notes = String(body.notes || "").trim().slice(0, 500);
+        const lat = Number(body.lat), lon = Number(body.lon);
+        const height = Math.min(Math.max(Number(body.height_m) || 10, 1), 200);
+        if (!name) return json({ error: "name required" }, 400);
+        if (!isFinite(lat) || !isFinite(lon) ||
+            lat < -60 || lat > 72 || lon < -180 || lon > 180) {
+          return json({ error: "invalid coordinates" }, 400);
+        }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const ipHash = (await sha256Hex("amm-salt:" + ip)).slice(0, 16);
+        const { results: cnt } = await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM potential_sites " +
+          "WHERE ip_hash = ? AND created_at > datetime('now', '-1 day')")
+          .bind(ipHash).all();
+        if (cnt[0].n >= 10) {
+          return json({ error: "daily submission limit reached" }, 429);
+        }
+        const VALID_STATUS = ["idea", "scouted", "contacted", "approved", "declined"];
+        const status = VALID_STATUS.includes(body.status) ? body.status : "idea";
+        const by = String(body.submitted_by || "").trim().slice(0, 40);
+        const r = await env.DB.prepare(
+          "INSERT INTO potential_sites (name, notes, lat, lon, height_m, status, submitted_by, ip_hash) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
+          .bind(name, notes, lat, lon, height, status, by, ipHash).all();
+        return json({ ok: true, id: r.results[0].id }, 201);
+      }
+      return json({ error: "method not allowed" }, 405);
+    }
+
+    // Outreach notes thread on a potential site ("talked to the owner 7/4…"),
+    // optionally moving its status along the idea→contacted→approved pipeline.
+    const noteMatch = url.pathname.match(/^\/api\/potential-sites\/(\d+)\/notes$/);
+    if (noteMatch) {
+      const siteId = Number(noteMatch[1]);
+      if (request.method === "GET") {
+        const { results } = await env.DB.prepare(
+          "SELECT note, author, created_at FROM potential_site_notes " +
+          "WHERE site_id = ? ORDER BY created_at DESC LIMIT 50").bind(siteId).all();
+        return json({ notes: results });
+      }
+      if (request.method === "POST") {
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+        const note = String(body.note || "").trim().slice(0, 500);
+        const author = String(body.author || "").trim().slice(0, 40);
+        if (!note) return json({ error: "note required" }, 400);
+        const { results: site } = await env.DB.prepare(
+          "SELECT id FROM potential_sites WHERE id = ?").bind(siteId).all();
+        if (!site.length) return json({ error: "no such site" }, 404);
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const ipHash = (await sha256Hex("amm-salt:" + ip)).slice(0, 16);
+        const { results: cnt } = await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM potential_site_notes " +
+          "WHERE ip_hash = ? AND created_at > datetime('now', '-1 day')")
+          .bind(ipHash).all();
+        if (cnt[0].n >= 30) return json({ error: "daily note limit reached" }, 429);
+        await env.DB.prepare(
+          "INSERT INTO potential_site_notes (site_id, note, author, ip_hash) VALUES (?, ?, ?, ?)")
+          .bind(siteId, note, author, ipHash).run();
+        const VALID_STATUS = ["idea", "scouted", "contacted", "approved", "declined"];
+        if (VALID_STATUS.includes(body.status)) {
+          await env.DB.prepare("UPDATE potential_sites SET status = ? WHERE id = ?")
+            .bind(body.status, siteId).run();
+        }
+        return json({ ok: true }, 201);
+      }
+      return json({ error: "method not allowed" }, 405);
+    }
 
     // Live mesh-node list (Austin MeshCore scope), edge-cached 5 minutes.
     if (url.pathname === "/api/mesh-nodes") {

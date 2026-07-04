@@ -6,6 +6,13 @@
   "assets": {
     "directory": "./public"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "austin-mesh-map",
+      "database_id": "697fbcf2-ccba-495f-ab9f-58a50e1cc664"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

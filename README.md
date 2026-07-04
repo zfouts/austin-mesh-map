@@ -65,6 +65,11 @@ To serve it on your own domain (the zone must be on Cloudflare), uncomment the
   antenna gain. Every pair is evaluated as a point-to-point link and drawn
   green (≥10 dB margin), amber (0–10 dB), or red (blocked); click a link for
   its full budget and elevation profile.
+- **Community potential sites** — a crowd-sourced, D1-backed layer of
+  "someone should put a repeater here" locations: name, access notes, planned
+  height, submitter, and an outreach status pipeline (idea → scouted →
+  contacted → approved/declined) with a running notes thread per site, so the
+  community can see who has already talked to a property owner.
 - **Repeater placement** — grid-searches the terrain around your sites for
   the spot whose *worst* link to any site is best (maximin), refines the top
   candidates at full resolution, and drops up to 15 ranked "R" markers with
@@ -126,6 +131,9 @@ This tool stands on a lot of open work:
 - **[Leaflet](https://leafletjs.com/)**, **[OpenStreetMap](https://www.openstreetmap.org/)**,
   **Esri** (imagery & hillshade tiles), **[Nominatim](https://nominatim.org/)** —
   the map itself.
+
+- **Andy Shinn** — feature direction for the community potential-sites map
+  (crowd-sourced locations with outreach notes).
 
 Built with [Claude Code](https://claude.com/claude-code), directed by
 [@zfouts](https://github.com/zfouts).

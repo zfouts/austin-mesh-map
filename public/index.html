@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 <div id="app">
@@ -38,6 +38,42 @@
       </div>
       <button id="repeaterBtn" type="button">Suggest repeater sites</button>
       <button id="clearSitesBtn" type="button" class="secondary">Clear all sites</button>
+
+      <h2>Potential sites (community)</h2>
+      <p class="hint">Nice, <i>accessible</i> spots the community has
+      identified for future repeaters — shared with everyone via D1.</p>
+      <button id="potShowBtn" type="button" class="secondary">Show potential sites</button>
+      <button id="potProposeBtn" type="button">Propose a site (then click map)</button>
+      <div id="potForm" hidden>
+        <label>Name
+          <input type="text" id="potName" maxlength="60" placeholder="e.g. Water tower on FM 1826">
+        </label>
+        <label>Why it's good / access notes
+          <input type="text" id="potNotes" maxlength="500" placeholder="e.g. friendly owner, power on site">
+        </label>
+        <div class="grid2">
+          <label>Your name
+            <input type="text" id="potBy" maxlength="40" placeholder="optional">
+          </label>
+          <label>Status
+            <select id="potStatus">
+              <option value="idea" selected>Idea</option>
+              <option value="scouted">Scouted in person</option>
+              <option value="contacted">Owner contacted</option>
+              <option value="approved">Approved!</option>
+            </select>
+          </label>
+          <label>Height (m)
+            <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
+          </label>
+          <label>&nbsp;
+            <button id="potSaveBtn" type="button" class="mini">Save</button>
+          </label>
+        </div>
+        <button id="potCancelBtn" type="button" class="secondary">Cancel</button>
+      </div>
+      <p class="hint">Pin colors: amber = idea · orange = scouted ·
+      blue = owner contacted · green = approved · gray = declined.</p>
 
       <h2>Existing mesh</h2>
       <div class="grid2">
@@ -215,8 +251,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=16"></script>
-<script src="itm.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="antennas.js?v=18"></script>
+<script src="itm.js?v=18"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

@@ -159,6 +159,18 @@ button.secondary {
   border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
   width: 24px !important; height: 24px !important;
 }
+.pot-icon {
+  background: #eda100; color: #1a1a19; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 12px system-ui, sans-serif;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  width: 24px !important; height: 24px !important;
+}
+.pot-idea { background: #eda100 !important; }
+.pot-scouted { background: #eb6834 !important; }
+.pot-contacted { background: #3987e5 !important; color: #fff !important; }
+.pot-approved { background: #0ca30c !important; color: #fff !important; }
+.pot-declined { background: #898781 !important; color: #fff !important; }
 .rep-icon {
   background: #4a3aa7; color: #fff; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
