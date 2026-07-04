@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 26;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 27;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -959,11 +959,12 @@ const linkLayer = L.layerGroup().addTo(map);
 const repeaterLayer = L.layerGroup().addTo(map);
 
 const TABS = ["coverage", "network", "community", "settings"];
-function setTab(name) {
+function setTab(name, fromHash) {
   for (const t of TABS) {
     $("tab-" + t).hidden = t !== name;
     $("tabBtn-" + t).classList.toggle("active", t === name);
   }
+  if (!fromHash) history.replaceState(null, "", "#" + name);
   mode = name === "network" ? "network"
        : name === "community" ? "community" : "coverage";
   if (name === "network" && sites.length >= 2) scheduleLinks();
@@ -974,6 +975,25 @@ function setTab(name) {
   }
 }
 TABS.forEach(t => $("tabBtn-" + t).addEventListener("click", () => setTab(t)));
+
+function applyHash() {
+  const h = location.hash.slice(1);
+  if (!h) return;
+  const [tab, sub] = h.split("/");
+  if (!TABS.includes(tab)) return;
+  setTab(tab, true);
+  if (tab === "community" && sub) {
+    loadPotentialSites().then(() => {
+      const i = potentialSites.findIndex(x => x.id === +sub);
+      if (i >= 0) {
+        map.setView([potentialSites[i].lat, potentialSites[i].lon],
+                    Math.max(map.getZoom(), 14));
+        openPotDetail(i);
+      }
+    }).catch(() => {});
+  }
+}
+window.addEventListener("hashchange", applyHash);
 
 function siteIcon(n) {
   return L.divIcon({ className: "site-icon", html: String(n),
@@ -1600,7 +1620,12 @@ function openModal(which, title) {
   $("potDetail").hidden = which !== "detail";
   if (title) $("modalTitle").textContent = title;
 }
-function closeModal() { $("modalBack").hidden = true; }
+function closeModal() {
+  $("modalBack").hidden = true;
+  if (location.hash.startsWith("#community/")) {
+    history.replaceState(null, "", "#community");
+  }
+}
 $("modalClose").addEventListener("click", closeModal);
 $("modalMin").addEventListener("click", () =>
   $("modalCard").classList.toggle("min"));
@@ -1796,11 +1821,13 @@ async function openPotDetail(i) {
   const ps = potentialSites[i];
   if (!ps) return;
   potLinkLayer.clearLayers();
+  history.replaceState(null, "", "#community/" + ps.id);
   const el = $("potDetail");
   openModal("detail", ps.name);
   el.innerHTML =
     `<div class="pd-head"><b>${escapeHtml(ps.name)}</b>` +
-    `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span></div>` +
+    `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
+    `<button class="site-del" id="pdShare" title="Copy link to this site">🔗</button></div>` +
     (ps.company ? `<div class="pd-row">Owner/business: <b>${escapeHtml(ps.company)}</b></div>` : "") +
     (ps.contact ? `<div class="pd-row">Contact: ${escapeHtml(ps.contact)}</div>` : "") +
     (ps.address ? `<div class="pd-row">${escapeHtml(ps.address)}</div>` : "") +
@@ -1843,6 +1870,12 @@ async function openPotDetail(i) {
     addSite(L.latLng(ps.lat, ps.lon), ps.height_m, +$("repGain").value);
     setTab("network");
     statusEl.textContent = `"${ps.name}" added to the planning network.`;
+  };
+  $("pdShare").onclick = () => {
+    const url = location.origin + "/#community/" + ps.id;
+    navigator.clipboard.writeText(url).then(
+      () => { statusEl.textContent = "Link copied: " + url; },
+      () => { statusEl.textContent = url; });
   };
   $("pdEdit").onclick = () => editPotentialSite(ps);
   $("pdLinks").onclick = () => checkPotMeshLinks(ps).catch(err => {
@@ -2074,3 +2107,4 @@ populateAntennaSelects();
 updateBudget();
 buildLegend(+$("rxSens").value);
 $("ver").textContent = `v${APP_VERSION} · `;
+applyHash();

@@ -69,6 +69,13 @@ check("coverage computes from a map click",
 check("legend appears after compute", await page.isVisible("#legend"));
 check("overlay image on map", await page.locator(".leaflet-image-layer").count() > 0);
 
+// --- permalinks
+await page.goto(BASE + "/#network", { waitUntil: "networkidle" });
+await page.waitForTimeout(600);
+check("#network permalink opens Network tab", await page.isVisible("#repeaterBtn"));
+await page.click("#tabBtn-community");
+check("tab click updates hash", (await page.evaluate(() => location.hash)) === "#community");
+
 check("no page errors", pageErrors.length === 0);
 if (pageErrors.length) console.log(pageErrors.join("\n"));
 
