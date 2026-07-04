@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 21;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 22;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -1577,6 +1577,26 @@ async function loadPotentialSites() {
   return potentialSites.length;
 }
 
+function openModal(which) {
+  $("modalBack").hidden = false;
+  $("potForm").hidden = which !== "form";
+  $("potDetail").hidden = which !== "detail";
+}
+function closeModal() { $("modalBack").hidden = true; }
+$("modalBack").addEventListener("click", e => {
+  if (e.target === $("modalBack")) closeModal();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("modalBack").hidden) closeModal();
+});
+$("potFormClose").addEventListener("click", closeModal);
+
+function potMsg(text, isError) {
+  const el = $("potMsg");
+  el.textContent = text;
+  el.style.color = isError ? "var(--bad)" : "";
+}
+
 $("potShowBtn").addEventListener("click", () => {
   loadPotentialSites().then(n => {
     statusEl.textContent = `${n} community potential sites loaded.`;
@@ -1589,13 +1609,23 @@ $("potShowBtn").addEventListener("click", () => {
 // ---- propose flow: click the map OR geocode a street address
 
 $("potProposeBtn").addEventListener("click", () => {
-  proposing = true;
   editingSiteId = null;
-  $("potDetail").hidden = true;
-  $("potForm").hidden = false;
+  $("potFormTitle").textContent = "New potential site";
   $("potSaveBtn").textContent = "Save potential site";
+  potMsg("Set the location: type an address and press Find, or pick the spot on the map.");
+  openModal("form");
+});
+
+$("potPickBtn").addEventListener("click", () => {
+  if (editingSiteId !== null) { potMsg("Location is fixed while editing.", true); return; }
+  proposing = true;
+  closeModal();
   statusEl.classList.remove("error");
-  statusEl.textContent = "Click the map where the site is, or type its address and press Find.";
+  statusEl.textContent = "Click the map where the site is — the editor will reopen.";
+});
+
+$("potAddress").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); $("potAddrFind").click(); }
 });
 
 async function reverseGeocode(lat, lon) {
@@ -1611,9 +1641,10 @@ function beginPotentialForm(latlng) {
   if (pendingPot && pendingPot.marker) map.removeLayer(pendingPot.marker);
   pendingPot = { latlng,
     marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
-  $("potForm").hidden = false;
-  statusEl.textContent =
-    `Pin at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} — click again to move it.`;
+  proposing = false;
+  $("potLoc").textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+  openModal("form");
+  potMsg("Location set. Fill in what you know — only the name is required.");
   if (!$("potAddress").value.trim()) {
     reverseGeocode(latlng.lat, latlng.lng).then(addr => {
       if (addr && !$("potAddress").value.trim()) $("potAddress").value = addr;
@@ -1623,16 +1654,17 @@ function beginPotentialForm(latlng) {
 
 $("potAddrFind").addEventListener("click", async () => {
   const q = $("potAddress").value.trim();
-  if (!q) return;
+  if (!q) { potMsg("Type an address first.", true); return; }
+  if (editingSiteId !== null) { potMsg("Location is fixed while editing.", true); return; }
   try {
-    statusEl.textContent = "Looking up address…";
+    potMsg("Looking up address…");
     const hit = await geocode(q);
     const ll = L.latLng(+hit.lat, +hit.lon);
     map.setView(ll, Math.max(map.getZoom(), 16));
     beginPotentialForm(ll);
+    potMsg(`Pin dropped at: ${hit.display_name.slice(0, 90)}`);
   } catch (err) {
-    statusEl.textContent = "Error: " + err.message;
-    statusEl.classList.add("error");
+    potMsg(err.message + " — or use Pick on map.", true);
   }
 });
 
@@ -1641,18 +1673,19 @@ function cancelPotentialForm() {
   pendingPot = null;
   proposing = false;
   editingSiteId = null;
-  $("potForm").hidden = true;
+  $("potLoc").textContent = "not set";
   $("potSaveBtn").textContent = "Save potential site";
+  closeModal();
 }
 $("potCancelBtn").addEventListener("click", cancelPotentialForm);
 
 $("potSaveBtn").addEventListener("click", async () => {
   if (!pendingPot) {
-    statusEl.textContent = "Set the location first — click the map or use Find.";
+    potMsg("Set the location first — Find an address or Pick on map.", true);
     return;
   }
   const name = $("potName").value.trim();
-  if (!name) { statusEl.textContent = "Give the site a name."; return; }
+  if (!name) { potMsg("Give the site a name.", true); return; }
   try {
     const fields = {
       name,
@@ -1695,17 +1728,18 @@ $("potSaveBtn").addEventListener("click", async () => {
       statusEl.textContent = `Saved — ${potentialSites.length} potential sites now shared.`;
     }
   } catch (err) {
-    statusEl.textContent = "Error: " + err.message;
-    statusEl.classList.add("error");
+    potMsg("Error: " + err.message, true);
   }
 });
 
 function editPotentialSite(ps) {
   editingSiteId = ps.id;
   proposing = false;
-  $("potDetail").hidden = true;
-  $("potForm").hidden = false;
+  $("potFormTitle").textContent = `Edit: ${ps.name}`;
   $("potSaveBtn").textContent = "Save changes";
+  $("potLoc").textContent = `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} (fixed)`;
+  potMsg("Editing — an audit note will be added to the thread.");
+  openModal("form");
   $("potName").value = ps.name;
   $("potCompany").value = ps.company || "";
   $("potAddress").value = ps.address || "";
@@ -1716,7 +1750,6 @@ function editPotentialSite(ps) {
   $("potAccess").value = ps.access || "unknown";
   $("potStatus").value = ps.status;
   pendingPot = { latlng: L.latLng(ps.lat, ps.lon), marker: null };
-  statusEl.textContent = `Editing "${ps.name}" — location stays put; use Save changes.`;
 }
 
 // ---- detail panel: everything about one site, plus mesh-link analysis
@@ -1724,10 +1757,9 @@ function editPotentialSite(ps) {
 async function openPotDetail(i) {
   const ps = potentialSites[i];
   if (!ps) return;
-  cancelPotentialForm();
   potLinkLayer.clearLayers();
   const el = $("potDetail");
-  el.hidden = false;
+  openModal("detail");
   el.innerHTML =
     `<div class="pd-head"><b>${escapeHtml(ps.name)}</b>` +
     `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
@@ -1763,10 +1795,13 @@ async function openPotDetail(i) {
     `<option value="declined">declined</option></select></div>` +
     `<button id="pdSave" type="button">Save update</button>`;
 
-  $("pdClose").onclick = () => { el.hidden = true; potLinkLayer.clearLayers(); };
-  $("pdCov").onclick = () =>
+  $("pdClose").onclick = () => { closeModal(); potLinkLayer.clearLayers(); };
+  $("pdCov").onclick = () => {
+    closeModal();
     window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
+  };
   $("pdAdd").onclick = () => {
+    closeModal();
     addSite(L.latLng(ps.lat, ps.lon), ps.height_m, +$("repGain").value);
     setTab("network");
     statusEl.textContent = `"${ps.name}" added to the planning network.`;
@@ -1853,7 +1888,8 @@ async function checkPotMeshLinks(ps) {
   rows.sort((a, c) => c.margin - a.margin);
   const ok = rows.filter(r => r.margin >= 0).length;
   $("pdLinkResults").innerHTML =
-    `<div class="pd-row"><b>Reaches ${ok} of ${rows.length} nearest repeaters:</b></div>` +
+    `<div class="pd-row"><b>Reaches ${ok} of ${rows.length} nearest repeaters</b>` +
+    ` <span class="sub2">(close this dialog to see the lines)</span></div>` +
     rows.map(r =>
       `<div class="pd-row"><span style="color:${linkColor(r.margin)}">●</span> ` +
       `${escapeHtml(r.n.name)} — ${(r.dist / 1000).toFixed(1)} km, ` +
@@ -1866,11 +1902,19 @@ async function checkPotMeshLinks(ps) {
 // ------------------------------------------------------------ address search
 
 async function geocode(q) {
+  let vb = "";
+  try {
+    const b = map.getBounds();
+    const vals = [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()];
+    if (vals.every(isFinite) && b.getWest() !== b.getEast()) {
+      vb = `&viewbox=${vals.join(",")}`;
+    }
+  } catch { /* map not laid out yet — search unbiased */ }
   const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
-                        + encodeURIComponent(q));
+                        + encodeURIComponent(q) + vb);
   if (!r.ok) throw new Error("geocoder unavailable");
   const js = await r.json();
-  if (!js.length) throw new Error("no results for that address");
+  if (!js.length) throw new Error(`no results for "${q}" — try adding city/state`);
   return js[0];
 }
 

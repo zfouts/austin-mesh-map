@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 <div id="app">
@@ -93,67 +93,6 @@
       <button id="potProposeBtn" type="button">Propose a site</button>
       <button id="potShowBtn" type="button" class="secondary">Reload sites</button>
 
-      <div id="potForm" hidden>
-        <h2>New potential site</h2>
-        <p class="hint">Click the map to drop the pin, or type the street
-        address and press Find.</p>
-        <label>Site / building name
-          <input type="text" id="potName" maxlength="60" placeholder="e.g. Deep Eddy water tower">
-        </label>
-        <label>Business / owner
-          <input type="text" id="potCompany" maxlength="80" placeholder="optional — who to ask">
-        </label>
-        <label>Street address
-          <div class="addr-row">
-            <input type="text" id="potAddress" maxlength="160" placeholder="auto-fills from the pin">
-            <button id="potAddrFind" type="button" class="mini">Find</button>
-          </div>
-        </label>
-        <label>Contact (phone / email)
-          <input type="text" id="potContact" maxlength="120" placeholder="optional — how to reach them">
-        </label>
-        <label>Why it&rsquo;s good / access notes
-          <input type="text" id="potNotes" maxlength="500" placeholder="e.g. friendly owner, power on the roof">
-        </label>
-        <div class="grid2">
-          <label>Mount / access
-            <select id="potAccess">
-              <option value="unknown" selected>Unknown</option>
-              <option value="rooftop">Rooftop</option>
-              <option value="tower">Tower</option>
-              <option value="water-tank">Water tank</option>
-              <option value="pole">Pole / mast</option>
-              <option value="hilltop">Hilltop ground</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Power on site
-            <select id="potPower">
-              <option value="unknown" selected>Unknown</option>
-              <option value="grid">Grid power</option>
-              <option value="solar-needed">None — solar</option>
-            </select>
-          </label>
-          <label>Roof / mast AGL (m)
-            <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
-          </label>
-          <label>Status
-            <select id="potStatus">
-              <option value="idea" selected>Idea</option>
-              <option value="scouted">Scouted in person</option>
-              <option value="contacted">Owner contacted</option>
-              <option value="approved">Approved!</option>
-            </select>
-          </label>
-        </div>
-        <label>Your name
-          <input type="text" id="potBy" maxlength="40" placeholder="optional">
-        </label>
-        <button id="potSaveBtn" type="button">Save potential site</button>
-        <button id="potCancelBtn" type="button" class="secondary">Cancel</button>
-      </div>
-
-      <div id="potDetail" class="pot-detail" hidden></div>
 
       <p class="hint">Pin colors: <span class="dot" style="background:#eda100"></span> idea
       &middot; <span class="dot" style="background:#eb6834"></span> scouted
@@ -274,10 +213,84 @@
   </div>
 </div>
 
+<div id="modalBack" hidden>
+  <div id="modalCard">
+
+    <div id="potForm" hidden>
+      <div class="pd-head"><b id="potFormTitle">New potential site</b>
+        <button class="site-del" id="potFormClose" title="Close">&times;</button></div>
+      <p class="hint" id="potMsg">Set the location: type an address and press
+      Find, or pick the spot on the map.</p>
+      <div class="grid2">
+        <label>Site / building name
+          <input type="text" id="potName" maxlength="60" placeholder="e.g. Deep Eddy water tower">
+        </label>
+        <label>Business / owner
+          <input type="text" id="potCompany" maxlength="80" placeholder="who to ask">
+        </label>
+      </div>
+      <label>Street address
+        <div class="addr-row">
+          <input type="text" id="potAddress" maxlength="160" placeholder="auto-fills from the pin">
+          <button id="potAddrFind" type="button" class="mini">Find</button>
+        </div>
+      </label>
+      <div class="pd-row">Location: <b id="potLoc">not set</b>
+        <button id="potPickBtn" type="button" class="mini">Pick on map</button></div>
+      <div class="grid2">
+        <label>Contact (phone / email)
+          <input type="text" id="potContact" maxlength="120" placeholder="optional">
+        </label>
+        <label>Your name
+          <input type="text" id="potBy" maxlength="40" placeholder="optional">
+        </label>
+        <label>Mount / access
+          <select id="potAccess">
+            <option value="unknown" selected>Unknown</option>
+            <option value="rooftop">Rooftop</option>
+            <option value="tower">Tower</option>
+            <option value="water-tank">Water tank</option>
+            <option value="pole">Pole / mast</option>
+            <option value="hilltop">Hilltop ground</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Power on site
+          <select id="potPower">
+            <option value="unknown" selected>Unknown</option>
+            <option value="grid">Grid power</option>
+            <option value="solar-needed">None &mdash; solar</option>
+          </select>
+        </label>
+        <label>Roof / mast AGL (m)
+          <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
+        </label>
+        <label>Status
+          <select id="potStatus">
+            <option value="idea" selected>Idea</option>
+            <option value="scouted">Scouted in person</option>
+            <option value="contacted">Owner contacted</option>
+            <option value="approved">Approved!</option>
+          </select>
+        </label>
+      </div>
+      <label>Why it&rsquo;s good / access notes
+        <textarea id="potNotes" rows="2" maxlength="500" placeholder="e.g. friendly owner, power on the roof, ladder access"></textarea>
+      </label>
+      <div class="pd-actions">
+        <button id="potSaveBtn" type="button">Save potential site</button>
+        <button id="potCancelBtn" type="button" class="secondary">Cancel</button>
+      </div>
+    </div>
+
+    <div id="potDetail" hidden></div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=21"></script>
-<script src="itm.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="antennas.js?v=22"></script>
+<script src="itm.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

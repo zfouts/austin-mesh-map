@@ -139,6 +139,23 @@ textarea {
   background: var(--page); border: 1px solid var(--hairline); border-radius: 6px;
 }
 
+#modalBack {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+#modalCard {
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--hairline); border-radius: 12px;
+  width: 100%; max-width: 600px; max-height: 88vh; overflow-y: auto;
+  padding: 16px 20px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+#modalCard label { font-size: 12px; }
+#modalCard .pd-actions button { padding: 8px; font-size: 12px; }
+
 .pot-detail {
   border: 1px solid var(--hairline); border-radius: 8px;
   padding: 10px 12px; margin-top: 10px; font-size: 12px;
