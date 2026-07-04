@@ -200,6 +200,15 @@ textarea {
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
        vertical-align: baseline; }
 
+#potList { margin: 8px 0; max-height: 320px; overflow-y: auto; }
+.pot-list-row {
+  display: flex; align-items: center; gap: 6px; padding: 5px 4px;
+  border-bottom: 1px solid var(--hairline); cursor: pointer; font-size: 12px;
+}
+.pot-list-row:hover { background: var(--page); }
+.pot-list-row .pl-name { flex: 1; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--text-primary); }
+
 .addr-row { display: flex; gap: 6px; margin-top: 3px; }
 .addr-row input { flex: 1; margin-top: 0; }
 button.mini {

@@ -1,0 +1,2 @@
+ALTER TABLE potential_sites ADD COLUMN owner_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE potential_sites ADD COLUMN flags INTEGER NOT NULL DEFAULT 0;

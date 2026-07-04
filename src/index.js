@@ -44,7 +44,7 @@ export default {
       if (request.method === "GET") {
         const { results } = await env.DB.prepare(
           "SELECT s.id, s.name, s.notes, s.lat, s.lon, s.height_m, s.status, " +
-          "s.address, s.company, s.contact, s.power, s.access, s.radio, " +
+          "s.address, s.company, s.contact, s.power, s.access, s.radio, s.flags, " +
           "s.submitted_by, s.created_at, COUNT(n.id) AS note_count " +
           "FROM potential_sites s LEFT JOIN potential_site_notes n ON n.site_id = s.id " +
           "GROUP BY s.id ORDER BY s.created_at DESC LIMIT 500").all();
@@ -75,15 +75,63 @@ export default {
         const status = VALID_STATUS.includes(body.status) ? body.status : "idea";
         const by = String(body.submitted_by || "").trim().slice(0, 40);
         const f = siteFields(body);
+        // Ownership: the client sends a random token; we store only its hash.
+        // Whoever holds the token (kept in their browser) can later delete it.
+        const ownerHash = body.owner_token
+          ? await sha256Hex("amm-owner:" + String(body.owner_token))
+          : "";
         const r = await env.DB.prepare(
           "INSERT INTO potential_sites (name, notes, lat, lon, height_m, status, submitted_by, " +
-          "address, company, contact, power, access, radio, ip_hash) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
+          "address, company, contact, power, access, radio, owner_hash, ip_hash) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
           .bind(name, notes, lat, lon, height, status, by,
-                f.address, f.company, f.contact, f.power, f.access, f.radio, ipHash).all();
+                f.address, f.company, f.contact, f.power, f.access, f.radio, ownerHash, ipHash).all();
         return json({ ok: true, id: r.results[0].id }, 201);
       }
       return json({ error: "method not allowed" }, 405);
+    }
+
+    // Delete a potential site — only the browser that created it (holds the
+    // owner token) or something flagged past threshold. Reporting is separate.
+    const delMatch = url.pathname.match(/^\/api\/potential-sites\/(\d+)$/);
+    if (delMatch && request.method === "DELETE") {
+      const siteId = Number(delMatch[1]);
+      const token = url.searchParams.get("token") || "";
+      const { results } = await env.DB.prepare(
+        "SELECT owner_hash FROM potential_sites WHERE id = ?").bind(siteId).all();
+      if (!results.length) return json({ error: "no such site" }, 404);
+      const ownerHash = results[0].owner_hash;
+      const provided = token ? await sha256Hex("amm-owner:" + token) : "";
+      if (!ownerHash || provided !== ownerHash) {
+        return json({ error: "not the owner of this site" }, 403);
+      }
+      await env.DB.prepare("DELETE FROM potential_site_notes WHERE site_id = ?").bind(siteId).run();
+      await env.DB.prepare("DELETE FROM potential_sites WHERE id = ?").bind(siteId).run();
+      return json({ ok: true });
+    }
+
+    // Report a site (anyone). Rate-limited per IP; a note records the reason.
+    const reportMatch = url.pathname.match(/^\/api\/potential-sites\/(\d+)\/report$/);
+    if (reportMatch && request.method === "POST") {
+      const siteId = Number(reportMatch[1]);
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const reason = String(body.reason || "").trim().slice(0, 200);
+      const { results } = await env.DB.prepare(
+        "SELECT id FROM potential_sites WHERE id = ?").bind(siteId).all();
+      if (!results.length) return json({ error: "no such site" }, 404);
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      const ipHash = (await sha256Hex("amm-salt:" + ip)).slice(0, 16);
+      const { results: cnt } = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM potential_site_notes " +
+        "WHERE ip_hash = ? AND created_at > datetime('now', '-1 day')").bind(ipHash).all();
+      if (cnt[0].n >= 30) return json({ error: "daily limit reached" }, 429);
+      await env.DB.prepare("UPDATE potential_sites SET flags = flags + 1 WHERE id = ?")
+        .bind(siteId).run();
+      await env.DB.prepare(
+        "INSERT INTO potential_site_notes (site_id, note, author, ip_hash) VALUES (?, ?, ?, ?)")
+        .bind(siteId, "⚑ Reported" + (reason ? ": " + reason : ""), "", ipHash).run();
+      return json({ ok: true });
     }
 
     // Edit an existing potential site. Every edit writes an audit note (which
@@ -169,6 +217,21 @@ export default {
         return json({ ok: true }, 201);
       }
       return json({ error: "method not allowed" }, 405);
+    }
+
+    // Observed links for one node (who actually hears it, with SNR) — proxied
+    // from scope's per-node reach endpoint, edge-cached 5 minutes.
+    const reachMatch = url.pathname.match(/^\/api\/mesh-reach\/([0-9a-fA-F]{16,64})$/);
+    if (reachMatch) {
+      const upstream = await fetch(
+        `https://scope.digitaino.com/api/nodes/${reachMatch[1]}/reach`, {
+        headers: { "User-Agent": "austin-mesh-map observed-links" },
+        cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 300, "500-599": 0 } },
+      });
+      if (!upstream.ok) return json({ error: "reach unavailable" }, 502);
+      return new Response(upstream.body, {
+        headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+      });
     }
 
     // Live mesh-node list (Austin MeshCore scope), edge-cached 5 minutes.

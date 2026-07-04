@@ -69,6 +69,12 @@ check("coverage computes from a map click",
 check("legend appears after compute", await page.isVisible("#legend"));
 check("overlay image on map", await page.locator(".leaflet-image-layer").count() > 0);
 
+// --- community list view
+await page.click("#tabBtn-community");
+await page.click("#potListToggle");
+await page.waitForTimeout(1200);
+check("list view toggles open", await page.isVisible("#potList"));
+
 // --- permalinks
 await page.goto(BASE + "/#network", { waitUntil: "networkidle" });
 await page.waitForTimeout(600);

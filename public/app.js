@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 28;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 29;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -1387,12 +1387,56 @@ function renderMeshLayer() {
       `${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}<br>` +
       `last seen ${String(n.last_seen).slice(0, 10)} · ` +
       `relay ${n.relay_active ? "active" : "idle"}<br>` +
+      `<button onclick="window.__meshObs(${i})">Observed links</button>` +
       `<button onclick="window.__meshCov(${i})">Show coverage</button>` +
       `<button onclick="window.__meshAdd(${i})">Add as site</button>`
     ).addTo(meshLayer);
   });
   return { shown, reps };
 }
+
+// Observed links: draw real "who hears this node" edges from scope's measured
+// reach data, colored by SNR — ground truth to compare against predictions.
+const observedLayer = L.layerGroup().addTo(map);
+const nodeByPubkey = () => new Map(meshNodes.map(n => [n.public_key, n]));
+
+function snrColor(snr) {
+  return snr >= 0 ? "#0ca30c" : snr >= -8 ? "#eda100" : snr >= -14 ? "#eb6834" : "#d03b3b";
+}
+
+window.__meshObs = async i => {
+  const n = meshNodes[i];
+  if (!n || !n.public_key) return;
+  map.closePopup();
+  observedLayer.clearLayers();
+  statusEl.textContent = `Loading observed links for ${n.name}…`;
+  try {
+    const r = await fetch("/api/mesh-reach/" + n.public_key);
+    if (!r.ok) throw new Error("reach data unavailable");
+    const obs = (await r.json()).direct_observers || [];
+    const idx = nodeByPubkey();
+    let drawn = 0;
+    for (const o of obs) {
+      const peer = idx.get(o.pubkey);
+      if (!peer || !peer.lat || !peer.lon) continue;
+      drawn++;
+      L.polyline([[n.lat, n.lon], [peer.lat, peer.lon]], {
+        color: snrColor(o.avg_snr), weight: 2.5, opacity: 0.85, dashArray: "1 4",
+      }).bindPopup(
+        `<b>Observed link</b> (real, measured)<br>` +
+        `${escapeHtml(n.name)} ↔ ${escapeHtml(peer.name)}<br>` +
+        `avg SNR ${o.avg_snr.toFixed(1)} dB · heard ${o.count}×`
+      ).addTo(observedLayer);
+    }
+    statusEl.textContent = drawn
+      ? `${n.name}: ${drawn} observed links (dashed, colored by SNR). ` +
+        `Compare with predicted coverage.`
+      : `${n.name}: no located neighbors in the observed data.`;
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  }
+};
 
 async function loadMeshNodes() {
   statusEl.textContent = "Loading mesh nodes…";
@@ -1599,6 +1643,24 @@ const potIcon = (status = "idea") => L.divIcon({
   className: `pot-icon pot-${status}`, html: "P",
   iconSize: [24, 24], iconAnchor: [12, 12] });
 
+// Ownership tokens: kept only in this browser. The server stores their hash,
+// so whoever created a site can delete it — no accounts needed.
+function ownerTokens() {
+  try { return JSON.parse(localStorage.getItem("amm-owner-tokens") || "{}"); }
+  catch { return {}; }
+}
+function ownsSite(id) { return Boolean(ownerTokens()[id]); }
+function rememberOwnership(id, token) {
+  const t = ownerTokens();
+  t[id] = token;
+  localStorage.setItem("amm-owner-tokens", JSON.stringify(t));
+}
+function forgetOwnership(id) {
+  const t = ownerTokens();
+  delete t[id];
+  localStorage.setItem("amm-owner-tokens", JSON.stringify(t));
+}
+
 async function loadPotentialSites() {
   const r = await fetch("/api/potential-sites");
   if (!r.ok) throw new Error("could not load potential sites");
@@ -1610,8 +1672,44 @@ async function loadPotentialSites() {
       .addTo(potentialLayer);
   });
   if (!map.hasLayer(potentialLayer)) potentialLayer.addTo(map);
+  renderPotList();
   return potentialSites.length;
 }
+
+const STATUS_ORDER = ["approved", "contacted", "scouted", "idea", "declined"];
+
+function renderPotList() {
+  const el = $("potList");
+  if (!el) return;
+  if (!potentialSites.length) {
+    el.innerHTML = `<p class="hint">No sites yet — Propose one, or Reload.</p>`;
+    return;
+  }
+  const sorted = potentialSites.slice().sort((a, b) =>
+    STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) ||
+    a.name.localeCompare(b.name));
+  el.innerHTML = sorted.map(ps => {
+    const i = potentialSites.indexOf(ps);
+    return `<div class="pot-list-row" data-i="${i}">` +
+      `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
+      `<span class="pl-name">${escapeHtml(ps.name)}` +
+      (ps.flags > 0 ? ` <span class="sub2">⚑${ps.flags}</span>` : "") + `</span>` +
+      `<span class="sub2">${ps.note_count || 0}📝</span></div>`;
+  }).join("");
+  el.querySelectorAll(".pot-list-row").forEach(row => {
+    row.addEventListener("click", () => openPotDetail(+row.dataset.i));
+  });
+}
+
+$("potListToggle").addEventListener("click", () => {
+  const box = $("potList");
+  const showing = !box.hidden;
+  box.hidden = showing;
+  $("potListToggle").textContent = showing ? "List view" : "Hide list";
+  if (!showing && !potentialSites.length) {
+    loadPotentialSites().catch(() => {});
+  }
+});
 
 function openModal(which, title) {
   $("modalBack").hidden = false;
@@ -1766,7 +1864,11 @@ $("potSaveBtn").addEventListener("click", async () => {
         body: JSON.stringify({ ...fields, author: $("potBy").value.trim(),
           lat: pendingPot.latlng.lat, lon: pendingPot.latlng.lng }),
       });
-    } else {
+    }
+    let newToken = null;
+    if (editingSiteId === null) {
+      newToken = (crypto.randomUUID && crypto.randomUUID()) ||
+                 String(Math.random()).slice(2) + Date.now();
       r = await fetch("/api/potential-sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1775,11 +1877,16 @@ $("potSaveBtn").addEventListener("click", async () => {
           lon: pendingPot.latlng.lng,
           status: $("potStatus").value,
           submitted_by: $("potBy").value.trim(),
+          owner_token: newToken,
         }),
       });
     }
     if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
     const wasEdit = editingSiteId !== null, editedId = editingSiteId;
+    if (newToken) {
+      const body = await r.json();
+      if (body.id) rememberOwnership(body.id, newToken);
+    }
     cancelPotentialForm();
     for (const id of ["potName", "potCompany", "potAddress", "potContact", "potNotes"]) $(id).value = "";
     await loadPotentialSites();
@@ -1846,6 +1953,11 @@ async function openPotDetail(i) {
     `<button id="pdAdd" type="button">Plan with it</button>` +
     `<button id="pdEdit" type="button">Edit</button>` +
     `</div>` +
+    `<div class="pd-actions">` +
+    (ownsSite(ps.id)
+      ? `<button id="pdDelete" type="button" class="secondary">Delete (yours)</button>`
+      : `<button id="pdReport" type="button" class="secondary">⚑ Report</button>`) +
+    `</div>` +
     `<div id="pdLinkResults"></div>` +
     `<h2>Updates</h2>` +
     `<div id="pdNotes"><span class="sub2">loading…</span></div>` +
@@ -1877,6 +1989,39 @@ async function openPotDetail(i) {
       () => { statusEl.textContent = url; });
   };
   $("pdEdit").onclick = () => editPotentialSite(ps);
+  if ($("pdDelete")) $("pdDelete").onclick = async () => {
+    if (!confirm(`Delete "${ps.name}"? This can't be undone.`)) return;
+    try {
+      const token = ownerTokens()[ps.id];
+      const r = await fetch(`/api/potential-sites/${ps.id}?token=${encodeURIComponent(token)}`,
+                            { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+      forgetOwnership(ps.id);
+      closeModal();
+      await loadPotentialSites();
+      statusEl.textContent = `Deleted "${ps.name}".`;
+    } catch (err) {
+      statusEl.textContent = "Error: " + err.message;
+      statusEl.classList.add("error");
+    }
+  };
+  if ($("pdReport")) $("pdReport").onclick = async () => {
+    const reason = prompt(`Report "${ps.name}" to moderators (duplicate, spam, bad location…):`, "");
+    if (reason === null) return;
+    try {
+      const r = await fetch(`/api/potential-sites/${ps.id}/report`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+      await loadPotentialSites();
+      openPotDetail(potentialSites.findIndex(x => x.id === ps.id));
+      statusEl.textContent = "Reported — thanks, an organizer will review it.";
+    } catch (err) {
+      statusEl.textContent = "Error: " + err.message;
+      statusEl.classList.add("error");
+    }
+  };
   $("pdLinks").onclick = () => checkPotMeshLinks(ps).catch(err => {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");

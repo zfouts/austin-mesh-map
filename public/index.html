@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 <div id="app">
@@ -91,14 +91,20 @@
       identified for future repeaters &mdash; who owns them, and who has
       already asked. Click a pin for details.</p>
       <button id="potProposeBtn" type="button">Propose a site</button>
-      <button id="potShowBtn" type="button" class="secondary">Reload sites</button>
-
+      <div class="grid2">
+        <button id="potListToggle" type="button" class="secondary">List view</button>
+        <button id="potShowBtn" type="button" class="secondary">Reload sites</button>
+      </div>
+      <div id="potList" hidden></div>
 
       <p class="hint">Pin colors: <span class="dot" style="background:#eda100"></span> idea
       &middot; <span class="dot" style="background:#eb6834"></span> scouted
       &middot; <span class="dot" style="background:#3987e5"></span> contacted
       &middot; <span class="dot" style="background:#0ca30c"></span> approved
       &middot; <span class="dot" style="background:#898781"></span> declined</p>
+      <p class="hint">On a mesh node (Network tab &rarr; Load nodes), use
+      <b>Observed links</b> to draw the real measured links — dashed lines
+      colored by SNR — to compare against predicted coverage.</p>
     </div>
 
     <!-- ============================== SETTINGS ============================ -->
@@ -300,8 +306,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=28"></script>
-<script src="itm.js?v=28"></script>
-<script src="app.js?v=28"></script>
+<script src="antennas.js?v=29"></script>
+<script src="itm.js?v=29"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
