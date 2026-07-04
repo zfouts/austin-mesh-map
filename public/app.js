@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 25;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 26;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -222,7 +222,9 @@ function clutterEndAt(p, heightAgl, lat, lon) {
     const db = clutterDbAt(lat, lon);
     if (db !== null) base = db;
   }
-  return base * Math.max(0, 1 - heightAgl / 20);
+  // fades out by ~12 m: a mast above the local roof/tree line is out of the
+  // clutter (calibrated against observed Austin links)
+  return base * Math.max(0, 1 - heightAgl / 12);
 }
 function clutterPair(p, aH, bH, aLat, aLon, bLat, bLon) {
   return clutterEndAt(p, aH, aLat, aLon) + clutterEndAt(p, bH, bLat, bLon);
@@ -372,8 +374,10 @@ function traceRay(azDeg, p, ctx, out, mechOut) {
   const sinA = Math.sin(azDeg * D2R), cosA = Math.cos(azDeg * D2R);
   const gTx = txGainToward(azDeg, p);
   const rxClutFixed = p.envAuto ? 0 : clutterEndAt(p, p.rxHeight);
+  const txClut = Math.min(clutterEndAt(p, p.txHeight, lat0, lon0),
+                          p.txClutterCap ?? Infinity);
   const fixed = p.txPower + gTx + p.rxGain - p.margin
-              - clutterEndAt(p, p.txHeight, lat0, lon0) - rxClutFixed
+              - txClut - rxClutFixed
               - 32.44 - 20 * Math.log10(p.freq);
   let a1 = -Infinity, d1 = 0, e1 = 0;    // main edge: angle from TX, dist, height
   let a2 = -Infinity, d2 = 0;            // secondary edge beyond it, from e1's top
@@ -1260,9 +1264,11 @@ window.__addRep = (lat, lon, h, g) => {
 
 // "Show coverage" from any node: same engine as the main TX, omni pattern,
 // that node's height and antenna gain, panel radius/receiver settings.
-window.__showCov = (lat, lon, h, g, label) => {
+window.__showCov = (lat, lon, h, g, label, txPower, txClutterCap) => {
   map.closePopup();
   const p = { ...readParams(), txHeight: h, txGain: g, omni: true };
+  if (txPower !== undefined) p.txPower = txPower;
+  if (txClutterCap !== undefined) p.txClutterCap = txClutterCap;
   runCoverage(lat, lon, p, label).catch(err => {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");
@@ -1391,7 +1397,8 @@ $("meshAge").addEventListener("change", () => {
 window.__meshCov = i => {
   const n = meshNodes[i];
   if (!n) return;
-  window.__showCov(n.lat, n.lon, +$("repHeight").value, +$("repGain").value, n.name);
+  window.__showCov(n.lat, n.lon, +$("repHeight").value, +$("repGain").value, n.name,
+                   undefined, 3);   // active repeater: proven above local clutter
 };
 window.__meshAdd = i => {
   const n = meshNodes[i];
@@ -1478,7 +1485,7 @@ async function meshCoverageInView() {
     return (my - myN) / (myS - myN) * (H - 1);
   };
 
-  const pn = { ...p, omni: true, txGain: g, txHeight: h };
+  const pn = { ...p, omni: true, txGain: g, txHeight: h, txClutterCap: 3 };
   const grid = new Float32Array(N_AZ * nStep);
   for (let k = 0; k < nodes.length; k++) {
     const n = nodes[k];
@@ -1562,6 +1569,11 @@ let pendingPot = null;            // {latlng, marker} while the form is open
 let editingSiteId = null;         // set when the form is editing an existing site
 const potentialLayer = L.layerGroup();
 const potLinkLayer = L.layerGroup().addTo(map);
+
+const RADIO_POWER = { "seeed-20": 20, "heltec-22": 22, "rak1w-30": 30 };
+const RADIO_LABEL = { "seeed-20": "standard node (20 dBm)",
+                      "heltec-22": "Heltec V4 (22 dBm)",
+                      "rak1w-30": "RAK + 1 W booster (30 dBm)" };
 
 const potIcon = (status = "idea") => L.divIcon({
   className: `pot-icon pot-${status}`, html: "P",
@@ -1721,6 +1733,7 @@ $("potSaveBtn").addEventListener("click", async () => {
       height_m: +$("potHeight").value,
       power: $("potPower").value,
       access: $("potAccess").value,
+      radio: $("potRadio").value,
     };
     let r;
     if (editingSiteId !== null) {
@@ -1772,6 +1785,7 @@ function editPotentialSite(ps) {
   $("potHeight").value = ps.height_m;
   $("potPower").value = ps.power || "unknown";
   $("potAccess").value = ps.access || "unknown";
+  $("potRadio").value = ps.radio || "heltec-22";
   $("potStatus").value = ps.status;
   pendingPot = { latlng: L.latLng(ps.lat, ps.lon), marker: null };
 }
@@ -1790,7 +1804,8 @@ async function openPotDetail(i) {
     (ps.company ? `<div class="pd-row">Owner/business: <b>${escapeHtml(ps.company)}</b></div>` : "") +
     (ps.contact ? `<div class="pd-row">Contact: ${escapeHtml(ps.contact)}</div>` : "") +
     (ps.address ? `<div class="pd-row">${escapeHtml(ps.address)}</div>` : "") +
-    `<div class="pd-row">${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · roof/mast ${ps.height_m} m AGL</div>` +
+    `<div class="pd-row">${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · roof/mast ${ps.height_m} m AGL · ` +
+    `${RADIO_LABEL[ps.radio] || RADIO_LABEL["heltec-22"]}</div>` +
     ((ps.access !== "unknown" || ps.power !== "unknown")
       ? `<div class="pd-row">${ps.access !== "unknown" ? "Mount: " + escapeHtml(ps.access) : ""}` +
         `${ps.access !== "unknown" && ps.power !== "unknown" ? " · " : ""}` +
@@ -1820,7 +1835,8 @@ async function openPotDetail(i) {
 
   $("pdCov").onclick = () => {
     closeModal();
-    window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
+    window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name,
+                     RADIO_POWER[ps.radio] || 22);
   };
   $("pdAdd").onclick = () => {
     closeModal();
@@ -1894,14 +1910,18 @@ async function checkPotMeshLinks(ps) {
   const env = { elevAt: makeSampler(z), stepLen: Math.max(mpp, reach / 900),
                 lambda: 299.792458 / p.freq, freq: p.freq, model: p.model };
   const g = +$("repGain").value, hNode = +$("repHeight").value;
+  const psPower = RADIO_POWER[ps.radio] || 22;
   potLinkLayer.clearLayers();
   const rows = [];
   for (const { n, dist } of cands) {
     const res = tracePath(ps.lat, ps.lon, ps.height_m, n.lat, n.lon, hNode,
                           env, env.model !== "deygout");
-    const margin = p.txPower + g + g - p.margin
-                 - clutterPair(p, ps.height_m, hNode, ps.lat, ps.lon, n.lat, n.lon)
-                 - res.loss - p.rxSens;
+    const clut = clutterEndAt(p, ps.height_m, ps.lat, ps.lon)
+               + Math.min(clutterEndAt(p, hNode, n.lat, n.lon), 3);
+    const common = g + g - p.margin - clut - res.loss - p.rxSens;
+    const out = psPower + common;              // candidate -> mesh node
+    const back = 22 + common;                  // typical node power returning
+    const margin = Math.min(out, back);        // a link is two-way
     rows.push({ n, dist, margin });
     L.polyline([[ps.lat, ps.lon], [n.lat, n.lon]],
       { color: linkColor(margin), weight: 3, opacity: 0.8 }).addTo(potLinkLayer);
@@ -1911,6 +1931,7 @@ async function checkPotMeshLinks(ps) {
   const ok = rows.filter(r => r.margin >= 0).length;
   $("pdLinkResults").innerHTML =
     `<div class="pd-row"><b>Reaches ${ok} of ${rows.length} nearest repeaters</b>` +
+    (psPower > 22 ? ` <span class="sub2">(booster helps outbound; margins are two-way limited)</span>` : "") +
     ` <span class="sub2">(drag or minimize this box to see the lines)</span></div>` +
     rows.map(r =>
       `<div class="pd-row"><span style="color:${linkColor(r.margin)}">●</span> ` +

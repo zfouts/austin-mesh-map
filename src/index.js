@@ -18,6 +18,7 @@ async function sha256Hex(text) {
 
 const POWER_VALUES = ["unknown", "grid", "solar-needed"];
 const ACCESS_VALUES = ["unknown", "rooftop", "tower", "water-tank", "pole", "hilltop", "other"];
+const RADIO_VALUES = ["seeed-20", "heltec-22", "rak1w-30"];
 
 function siteFields(body) {
   return {
@@ -26,6 +27,7 @@ function siteFields(body) {
     contact: String(body.contact || "").trim().slice(0, 120),
     power: POWER_VALUES.includes(body.power) ? body.power : "unknown",
     access: ACCESS_VALUES.includes(body.access) ? body.access : "unknown",
+    radio: RADIO_VALUES.includes(body.radio) ? body.radio : "heltec-22",
   };
 }
 
@@ -42,7 +44,7 @@ export default {
       if (request.method === "GET") {
         const { results } = await env.DB.prepare(
           "SELECT s.id, s.name, s.notes, s.lat, s.lon, s.height_m, s.status, " +
-          "s.address, s.company, s.contact, s.power, s.access, " +
+          "s.address, s.company, s.contact, s.power, s.access, s.radio, " +
           "s.submitted_by, s.created_at, COUNT(n.id) AS note_count " +
           "FROM potential_sites s LEFT JOIN potential_site_notes n ON n.site_id = s.id " +
           "GROUP BY s.id ORDER BY s.created_at DESC LIMIT 500").all();
@@ -75,10 +77,10 @@ export default {
         const f = siteFields(body);
         const r = await env.DB.prepare(
           "INSERT INTO potential_sites (name, notes, lat, lon, height_m, status, submitted_by, " +
-          "address, company, contact, power, access, ip_hash) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
+          "address, company, contact, power, access, radio, ip_hash) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
           .bind(name, notes, lat, lon, height, status, by,
-                f.address, f.company, f.contact, f.power, f.access, ipHash).all();
+                f.address, f.company, f.contact, f.power, f.access, f.radio, ipHash).all();
         return json({ ok: true, id: r.results[0].id }, 201);
       }
       return json({ error: "method not allowed" }, 405);
@@ -109,9 +111,9 @@ export default {
       if (cnt[0].n >= 30) return json({ error: "daily edit limit reached" }, 429);
       await env.DB.prepare(
         "UPDATE potential_sites SET name = ?, notes = ?, height_m = ?, " +
-        "address = ?, company = ?, contact = ?, power = ?, access = ? WHERE id = ?")
+        "address = ?, company = ?, contact = ?, power = ?, access = ?, radio = ? WHERE id = ?")
         .bind(name, notes, height, f.address, f.company, f.contact,
-              f.power, f.access, siteId).run();
+              f.power, f.access, f.radio, siteId).run();
       await env.DB.prepare(
         "INSERT INTO potential_site_notes (site_id, note, author, ip_hash) VALUES (?, ?, ?, ?)")
         .bind(siteId, "(details edited)", author, ipHash).run();

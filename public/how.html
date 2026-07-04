@@ -107,10 +107,13 @@
   Barton Creek greenbelt is penalized differently than one in a parking lot.
   Outside the US (or if the data is unavailable) it falls back to the manual
   environment setting: 0 (open), 6 (rural trees), 12 (suburban), or
-  18&nbsp;dB (dense urban). Either way the loss fades linearly to zero as the
-  antenna rises above the ~20&nbsp;m clutter layer. A rooftop yagi at 10&nbsp;m eats half the penalty;
-  a tower eats none. The separate <strong>fade margin</strong> (default
-  6&nbsp;dB) reserves headroom for multipath fading.</p>
+  18&nbsp;dB (dense urban). Either way the loss fades linearly to zero as the antenna rises above
+  ~12&nbsp;m — a mast above the local roof/tree line is out of the clutter
+  (this height, and the 3&nbsp;dB clutter cap applied to <em>proven-active</em>
+  mesh repeaters, were calibrated against observed Austin links: a repeater
+  that demonstrably relays traffic is de facto above its clutter). The
+  separate <strong>fade margin</strong> (default 3&nbsp;dB) reserves headroom
+  for multipath fading.</p>
 
   <h2>5. Antennas</h2>
   <p>The antenna list uses <strong>honest gains</strong>: where a marketing
