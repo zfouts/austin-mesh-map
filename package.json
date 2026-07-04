@@ -5,9 +5,11 @@
   "description": "Client-side RF coverage mapper (915 MHz and friends) on Cloudflare Workers",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test:visual": "node scripts/visual-check.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.61.1",
     "wrangler": "^4.107.0"
   }
 }
