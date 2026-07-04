@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 <div id="app">
@@ -109,10 +109,31 @@
             <button id="potAddrFind" type="button" class="mini">Find</button>
           </div>
         </label>
+        <label>Contact (phone / email)
+          <input type="text" id="potContact" maxlength="120" placeholder="optional — how to reach them">
+        </label>
         <label>Why it&rsquo;s good / access notes
           <input type="text" id="potNotes" maxlength="500" placeholder="e.g. friendly owner, power on the roof">
         </label>
         <div class="grid2">
+          <label>Mount / access
+            <select id="potAccess">
+              <option value="unknown" selected>Unknown</option>
+              <option value="rooftop">Rooftop</option>
+              <option value="tower">Tower</option>
+              <option value="water-tank">Water tank</option>
+              <option value="pole">Pole / mast</option>
+              <option value="hilltop">Hilltop ground</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Power on site
+            <select id="potPower">
+              <option value="unknown" selected>Unknown</option>
+              <option value="grid">Grid power</option>
+              <option value="solar-needed">None — solar</option>
+            </select>
+          </label>
           <label>Roof / mast AGL (m)
             <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
           </label>
@@ -255,8 +276,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=20"></script>
-<script src="itm.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="antennas.js?v=21"></script>
+<script src="itm.js?v=21"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

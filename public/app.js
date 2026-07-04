@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 20;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 21;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -1555,6 +1555,7 @@ $("meshCovBtn").addEventListener("click", () => {
 let potentialSites = [];
 let proposing = false;
 let pendingPot = null;            // {latlng, marker} while the form is open
+let editingSiteId = null;         // set when the form is editing an existing site
 const potentialLayer = L.layerGroup();
 const potLinkLayer = L.layerGroup().addTo(map);
 
@@ -1589,8 +1590,10 @@ $("potShowBtn").addEventListener("click", () => {
 
 $("potProposeBtn").addEventListener("click", () => {
   proposing = true;
+  editingSiteId = null;
   $("potDetail").hidden = true;
   $("potForm").hidden = false;
+  $("potSaveBtn").textContent = "Save potential site";
   statusEl.classList.remove("error");
   statusEl.textContent = "Click the map where the site is, or type its address and press Find.";
 });
@@ -1605,7 +1608,7 @@ async function reverseGeocode(lat, lon) {
 }
 
 function beginPotentialForm(latlng) {
-  if (pendingPot) map.removeLayer(pendingPot.marker);
+  if (pendingPot && pendingPot.marker) map.removeLayer(pendingPot.marker);
   pendingPot = { latlng,
     marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
   $("potForm").hidden = false;
@@ -1634,10 +1637,12 @@ $("potAddrFind").addEventListener("click", async () => {
 });
 
 function cancelPotentialForm() {
-  if (pendingPot) map.removeLayer(pendingPot.marker);
+  if (pendingPot && pendingPot.marker) map.removeLayer(pendingPot.marker);
   pendingPot = null;
   proposing = false;
+  editingSiteId = null;
   $("potForm").hidden = true;
+  $("potSaveBtn").textContent = "Save potential site";
 }
 $("potCancelBtn").addEventListener("click", cancelPotentialForm);
 
@@ -1649,31 +1654,70 @@ $("potSaveBtn").addEventListener("click", async () => {
   const name = $("potName").value.trim();
   if (!name) { statusEl.textContent = "Give the site a name."; return; }
   try {
-    const r = await fetch("/api/potential-sites", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        company: $("potCompany").value.trim(),
-        address: $("potAddress").value.trim(),
-        notes: $("potNotes").value.trim(),
-        lat: pendingPot.latlng.lat,
-        lon: pendingPot.latlng.lng,
-        height_m: +$("potHeight").value,
-        status: $("potStatus").value,
-        submitted_by: $("potBy").value.trim(),
-      }),
-    });
+    const fields = {
+      name,
+      company: $("potCompany").value.trim(),
+      address: $("potAddress").value.trim(),
+      contact: $("potContact").value.trim(),
+      notes: $("potNotes").value.trim(),
+      height_m: +$("potHeight").value,
+      power: $("potPower").value,
+      access: $("potAccess").value,
+    };
+    let r;
+    if (editingSiteId !== null) {
+      r = await fetch(`/api/potential-sites/${editingSiteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...fields, author: $("potBy").value.trim() }),
+      });
+    } else {
+      r = await fetch("/api/potential-sites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...fields,
+          lat: pendingPot.latlng.lat,
+          lon: pendingPot.latlng.lng,
+          status: $("potStatus").value,
+          submitted_by: $("potBy").value.trim(),
+        }),
+      });
+    }
     if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+    const wasEdit = editingSiteId !== null, editedId = editingSiteId;
     cancelPotentialForm();
-    for (const id of ["potName", "potCompany", "potAddress", "potNotes"]) $(id).value = "";
+    for (const id of ["potName", "potCompany", "potAddress", "potContact", "potNotes"]) $(id).value = "";
     await loadPotentialSites();
-    statusEl.textContent = `Saved — ${potentialSites.length} potential sites now shared.`;
+    if (wasEdit) {
+      openPotDetail(potentialSites.findIndex(x => x.id === editedId));
+      statusEl.textContent = "Details updated.";
+    } else {
+      statusEl.textContent = `Saved — ${potentialSites.length} potential sites now shared.`;
+    }
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");
   }
 });
+
+function editPotentialSite(ps) {
+  editingSiteId = ps.id;
+  proposing = false;
+  $("potDetail").hidden = true;
+  $("potForm").hidden = false;
+  $("potSaveBtn").textContent = "Save changes";
+  $("potName").value = ps.name;
+  $("potCompany").value = ps.company || "";
+  $("potAddress").value = ps.address || "";
+  $("potContact").value = ps.contact || "";
+  $("potNotes").value = ps.notes || "";
+  $("potHeight").value = ps.height_m;
+  $("potPower").value = ps.power || "unknown";
+  $("potAccess").value = ps.access || "unknown";
+  $("potStatus").value = ps.status;
+  pendingPot = { latlng: L.latLng(ps.lat, ps.lon), marker: null };
+  statusEl.textContent = `Editing "${ps.name}" — location stays put; use Save changes.`;
+}
 
 // ---- detail panel: everything about one site, plus mesh-link analysis
 
@@ -1689,8 +1733,14 @@ async function openPotDetail(i) {
     `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
     `<button class="site-del" id="pdClose" title="Close">×</button></div>` +
     (ps.company ? `<div class="pd-row">Owner/business: <b>${escapeHtml(ps.company)}</b></div>` : "") +
+    (ps.contact ? `<div class="pd-row">Contact: ${escapeHtml(ps.contact)}</div>` : "") +
     (ps.address ? `<div class="pd-row">${escapeHtml(ps.address)}</div>` : "") +
     `<div class="pd-row">${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · roof/mast ${ps.height_m} m AGL</div>` +
+    ((ps.access !== "unknown" || ps.power !== "unknown")
+      ? `<div class="pd-row">${ps.access !== "unknown" ? "Mount: " + escapeHtml(ps.access) : ""}` +
+        `${ps.access !== "unknown" && ps.power !== "unknown" ? " · " : ""}` +
+        `${ps.power === "grid" ? "grid power" : ps.power === "solar-needed" ? "no power — solar" : ""}</div>`
+      : "") +
     (ps.notes ? `<div class="pd-row">${escapeHtml(ps.notes)}</div>` : "") +
     `<div class="pd-row sub2">added ${String(ps.created_at).slice(0, 10)}` +
     (ps.submitted_by ? ` by ${escapeHtml(ps.submitted_by)}` : "") + `</div>` +
@@ -1698,6 +1748,7 @@ async function openPotDetail(i) {
     `<button id="pdLinks" type="button">Mesh links</button>` +
     `<button id="pdCov" type="button">Coverage</button>` +
     `<button id="pdAdd" type="button">Plan with it</button>` +
+    `<button id="pdEdit" type="button">Edit</button>` +
     `</div>` +
     `<div id="pdLinkResults"></div>` +
     `<h2>Updates</h2>` +
@@ -1720,6 +1771,7 @@ async function openPotDetail(i) {
     setTab("network");
     statusEl.textContent = `"${ps.name}" added to the planning network.`;
   };
+  $("pdEdit").onclick = () => editPotentialSite(ps);
   $("pdLinks").onclick = () => checkPotMeshLinks(ps).catch(err => {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");
