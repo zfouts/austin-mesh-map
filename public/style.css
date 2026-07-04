@@ -142,20 +142,38 @@ textarea {
 
 #modalBack {
   position: fixed; inset: 0; z-index: 2000;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
+  pointer-events: none;              /* map stays fully interactive */
 }
 #modalCard {
+  position: absolute; top: 60px; right: 24px;
+  width: min(560px, calc(100vw - 48px)); max-height: 82vh; overflow-y: auto;
+  pointer-events: auto;
   background: var(--surface-1); color: var(--text-primary);
   border: 1px solid var(--hairline); border-radius: 12px;
-  width: 100%; max-width: 600px; max-height: 88vh; overflow-y: auto;
-  padding: 16px 20px 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   font-size: 13px;
 }
 #modalCard label { font-size: 12px; }
 #modalCard .pd-actions button { padding: 8px; font-size: 12px; }
+#modalCard > div:not(#modalBar) { padding: 10px 16px 16px; }
+#modalBar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; cursor: grab; user-select: none; touch-action: none;
+  background: var(--surface-1); border-bottom: 1px solid var(--hairline);
+  border-radius: 12px 12px 0 0;
+}
+#modalBar b {
+  flex: 1; font-size: 13px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+#modalBar button {
+  width: auto; margin: 0; padding: 0 8px; font-size: 16px; line-height: 1.3;
+  background: none; border: none; color: var(--muted); cursor: pointer;
+}
+#modalCard.min { overflow-y: visible; width: 260px; }
+#modalCard.min > div:not(#modalBar) { display: none; }
+#modalCard.min #modalBar { border-bottom: none; border-radius: 12px; }
 
 .pot-detail {
   border: 1px solid var(--hairline); border-radius: 8px;

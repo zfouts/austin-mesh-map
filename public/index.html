@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=24">
+<link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
 <div id="app">
@@ -215,10 +215,14 @@
 
 <div id="modalBack" hidden>
   <div id="modalCard">
+    <div id="modalBar">
+      <b id="modalTitle">Potential site</b>
+      <button id="modalMin" type="button" title="Minimize">&ndash;</button>
+      <button id="modalClose" type="button" title="Close">&times;</button>
+    </div>
 
     <div id="potForm" hidden>
-      <div class="pd-head"><b id="potFormTitle">New potential site</b>
-        <button class="site-del" id="potFormClose" title="Close">&times;</button></div>
+      <p class="hint" id="potFormTitle" hidden></p>
       <p class="hint" id="potMsg">Set the location: type an address and press
       Find, or pick the spot on the map.</p>
       <div class="grid2">
@@ -289,8 +293,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=24"></script>
-<script src="itm.js?v=24"></script>
-<script src="app.js?v=24"></script>
+<script src="antennas.js?v=25"></script>
+<script src="itm.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

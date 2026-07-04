@@ -44,6 +44,16 @@ await page.click("#tabBtn-community");
 await page.click("#potProposeBtn");
 check("modal opens on Propose", await page.isVisible("#modalBack"));
 check("form fields rendered in modal", await page.isVisible("#potAddress"));
+await page.click("#modalMin");
+await page.waitForTimeout(150);
+check("minimize hides form body", !(await page.isVisible("#potAddress")));
+check("minimized bar still visible", await page.isVisible("#modalBar"));
+await page.click("#modalMin");
+await page.waitForTimeout(150);
+check("restore brings form back", await page.isVisible("#potAddress"));
+const card = await page.locator("#modalCard").boundingBox();
+check("floating card leaves most of the map exposed",
+  card !== null && card.width < 620);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(150);
 check("Esc closes modal", !(await page.isVisible("#modalBack")));

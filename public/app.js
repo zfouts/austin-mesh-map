@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 24;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 25;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -933,6 +933,10 @@ function setTx(latlng) {
 map.on("click", e => {
   if (Date.now() - lastLinkClick < 300) return;    // click landed on a link line
   if (proposing) { beginPotentialForm(e.latlng); return; }
+  if (!$("modalBack").hidden && !$("potForm").hidden && editingSiteId === null) {
+    beginPotentialForm(e.latlng);                  // form is open: click = set pin
+    return;
+  }
   if (mode === "community") return;                // pins only in community tab
   if (mode === "network") { addSite(e.latlng); return; }
   if (!txLatLng) setTx(e.latlng);
@@ -1577,19 +1581,41 @@ async function loadPotentialSites() {
   return potentialSites.length;
 }
 
-function openModal(which) {
+function openModal(which, title) {
   $("modalBack").hidden = false;
+  $("modalCard").classList.remove("min");
   $("potForm").hidden = which !== "form";
   $("potDetail").hidden = which !== "detail";
+  if (title) $("modalTitle").textContent = title;
 }
 function closeModal() { $("modalBack").hidden = true; }
-$("modalBack").addEventListener("click", e => {
-  if (e.target === $("modalBack")) closeModal();
-});
+$("modalClose").addEventListener("click", closeModal);
+$("modalMin").addEventListener("click", () =>
+  $("modalCard").classList.toggle("min"));
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("modalBack").hidden) closeModal();
 });
-$("potFormClose").addEventListener("click", closeModal);
+
+// drag the card by its title bar
+{
+  const card = $("modalCard"), bar = $("modalBar");
+  let off = null;
+  bar.addEventListener("pointerdown", e => {
+    if (e.target.closest("button")) return;
+    const r = card.getBoundingClientRect();
+    off = { x: e.clientX - r.left, y: e.clientY - r.top };
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener("pointermove", e => {
+    if (!off) return;
+    card.style.left = Math.max(4, Math.min(e.clientX - off.x,
+      window.innerWidth - 120)) + "px";
+    card.style.top = Math.max(4, Math.min(e.clientY - off.y,
+      window.innerHeight - 48)) + "px";
+    card.style.right = "auto";
+  });
+  bar.addEventListener("pointerup", () => { off = null; });
+}
 
 function potMsg(text, isError) {
   const el = $("potMsg");
@@ -1610,10 +1636,9 @@ $("potShowBtn").addEventListener("click", () => {
 
 $("potProposeBtn").addEventListener("click", () => {
   editingSiteId = null;
-  $("potFormTitle").textContent = "New potential site";
   $("potSaveBtn").textContent = "Save potential site";
-  potMsg("Set the location: type an address and press Find, or pick the spot on the map.");
-  openModal("form");
+  potMsg("Set the location: click the map, or type an address and press Find.");
+  openModal("form", "New potential site");
 });
 
 $("potPickBtn").addEventListener("click", () => {
@@ -1643,7 +1668,7 @@ function beginPotentialForm(latlng) {
     marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
   proposing = false;
   $("potLoc").textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
-  openModal("form");
+  openModal("form", $("modalTitle").textContent || "New potential site");
   potMsg("Location set. Fill in what you know — only the name is required.");
   if (!$("potAddress").value.trim()) {
     reverseGeocode(latlng.lat, latlng.lng).then(addr => {
@@ -1735,11 +1760,10 @@ $("potSaveBtn").addEventListener("click", async () => {
 function editPotentialSite(ps) {
   editingSiteId = ps.id;
   proposing = false;
-  $("potFormTitle").textContent = `Edit: ${ps.name}`;
   $("potSaveBtn").textContent = "Save changes";
   $("potLoc").textContent = `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} (fixed)`;
   potMsg("Editing — an audit note will be added to the thread.");
-  openModal("form");
+  openModal("form", `Edit: ${ps.name}`);
   $("potName").value = ps.name;
   $("potCompany").value = ps.company || "";
   $("potAddress").value = ps.address || "";
@@ -1759,11 +1783,10 @@ async function openPotDetail(i) {
   if (!ps) return;
   potLinkLayer.clearLayers();
   const el = $("potDetail");
-  openModal("detail");
+  openModal("detail", ps.name);
   el.innerHTML =
     `<div class="pd-head"><b>${escapeHtml(ps.name)}</b>` +
-    `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
-    `<button class="site-del" id="pdClose" title="Close">×</button></div>` +
+    `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span></div>` +
     (ps.company ? `<div class="pd-row">Owner/business: <b>${escapeHtml(ps.company)}</b></div>` : "") +
     (ps.contact ? `<div class="pd-row">Contact: ${escapeHtml(ps.contact)}</div>` : "") +
     (ps.address ? `<div class="pd-row">${escapeHtml(ps.address)}</div>` : "") +
@@ -1795,7 +1818,6 @@ async function openPotDetail(i) {
     `<option value="declined">declined</option></select></div>` +
     `<button id="pdSave" type="button">Save update</button>`;
 
-  $("pdClose").onclick = () => { closeModal(); potLinkLayer.clearLayers(); };
   $("pdCov").onclick = () => {
     closeModal();
     window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
@@ -1889,7 +1911,7 @@ async function checkPotMeshLinks(ps) {
   const ok = rows.filter(r => r.margin >= 0).length;
   $("pdLinkResults").innerHTML =
     `<div class="pd-row"><b>Reaches ${ok} of ${rows.length} nearest repeaters</b>` +
-    ` <span class="sub2">(close this dialog to see the lines)</span></div>` +
+    ` <span class="sub2">(drag or minimize this box to see the lines)</span></div>` +
     rows.map(r =>
       `<div class="pd-row"><span style="color:${linkColor(r.margin)}">●</span> ` +
       `${escapeHtml(r.n.name)} — ${(r.dist / 1000).toFixed(1)} km, ` +
