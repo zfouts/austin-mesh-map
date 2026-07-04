@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 27;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 28;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -937,7 +937,7 @@ function setTx(latlng) {
 map.on("click", e => {
   if (Date.now() - lastLinkClick < 300) return;    // click landed on a link line
   if (proposing) { beginPotentialForm(e.latlng); return; }
-  if (!$("modalBack").hidden && !$("potForm").hidden && editingSiteId === null) {
+  if (!$("modalBack").hidden && !$("potForm").hidden) {
     beginPotentialForm(e.latlng);                  // form is open: click = set pin
     return;
   }
@@ -1679,11 +1679,10 @@ $("potProposeBtn").addEventListener("click", () => {
 });
 
 $("potPickBtn").addEventListener("click", () => {
-  if (editingSiteId !== null) { potMsg("Location is fixed while editing.", true); return; }
   proposing = true;
   closeModal();
   statusEl.classList.remove("error");
-  statusEl.textContent = "Click the map where the site is — the editor will reopen.";
+  statusEl.textContent = "Click the map to set the location — the editor will reopen.";
 });
 
 $("potAddress").addEventListener("keydown", e => {
@@ -1717,7 +1716,6 @@ function beginPotentialForm(latlng) {
 $("potAddrFind").addEventListener("click", async () => {
   const q = $("potAddress").value.trim();
   if (!q) { potMsg("Type an address first.", true); return; }
-  if (editingSiteId !== null) { potMsg("Location is fixed while editing.", true); return; }
   try {
     potMsg("Looking up address…");
     const hit = await geocode(q);
@@ -1765,7 +1763,8 @@ $("potSaveBtn").addEventListener("click", async () => {
       r = await fetch(`/api/potential-sites/${editingSiteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...fields, author: $("potBy").value.trim() }),
+        body: JSON.stringify({ ...fields, author: $("potBy").value.trim(),
+          lat: pendingPot.latlng.lat, lon: pendingPot.latlng.lng }),
       });
     } else {
       r = await fetch("/api/potential-sites", {
@@ -1799,8 +1798,8 @@ function editPotentialSite(ps) {
   editingSiteId = ps.id;
   proposing = false;
   $("potSaveBtn").textContent = "Save changes";
-  $("potLoc").textContent = `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} (fixed)`;
-  potMsg("Editing — an audit note will be added to the thread.");
+  $("potLoc").textContent = `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)}`;
+  potMsg("Editing — change any field, or Find/Pick to correct the location.");
   openModal("form", `Edit: ${ps.name}`);
   $("potName").value = ps.name;
   $("potCompany").value = ps.company || "";

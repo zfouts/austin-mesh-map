@@ -101,6 +101,9 @@ export default {
       const notes = String(body.notes || "").trim().slice(0, 500);
       const height = Math.min(Math.max(Number(body.height_m) || 10, 1), 200);
       const f = siteFields(body);
+      const lat = Number(body.lat), lon = Number(body.lon);
+      const hasLoc = isFinite(lat) && isFinite(lon) &&
+        lat >= -60 && lat <= 72 && lon >= -180 && lon <= 180;
       const author = String(body.author || "").trim().slice(0, 40);
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const ipHash = (await sha256Hex("amm-salt:" + ip)).slice(0, 16);
@@ -109,11 +112,19 @@ export default {
         "WHERE ip_hash = ? AND created_at > datetime('now', '-1 day')")
         .bind(ipHash).all();
       if (cnt[0].n >= 30) return json({ error: "daily edit limit reached" }, 429);
-      await env.DB.prepare(
-        "UPDATE potential_sites SET name = ?, notes = ?, height_m = ?, " +
-        "address = ?, company = ?, contact = ?, power = ?, access = ?, radio = ? WHERE id = ?")
-        .bind(name, notes, height, f.address, f.company, f.contact,
-              f.power, f.access, f.radio, siteId).run();
+      if (hasLoc) {
+        await env.DB.prepare(
+          "UPDATE potential_sites SET name = ?, notes = ?, height_m = ?, lat = ?, lon = ?, " +
+          "address = ?, company = ?, contact = ?, power = ?, access = ?, radio = ? WHERE id = ?")
+          .bind(name, notes, height, lat, lon, f.address, f.company, f.contact,
+                f.power, f.access, f.radio, siteId).run();
+      } else {
+        await env.DB.prepare(
+          "UPDATE potential_sites SET name = ?, notes = ?, height_m = ?, " +
+          "address = ?, company = ?, contact = ?, power = ?, access = ?, radio = ? WHERE id = ?")
+          .bind(name, notes, height, f.address, f.company, f.contact,
+                f.power, f.access, f.radio, siteId).run();
+      }
       await env.DB.prepare(
         "INSERT INTO potential_site_notes (site_id, note, author, ip_hash) VALUES (?, ?, ?, ?)")
         .bind(siteId, "(details edited)", author, ipHash).run();
