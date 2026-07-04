@@ -6,7 +6,7 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div id="app">
@@ -39,7 +39,28 @@
       <button id="repeaterBtn" type="button">Suggest repeater sites</button>
       <button id="clearSitesBtn" type="button" class="secondary">Clear all sites</button>
 
-      <h2>Potential sites (community)</h2>
+      <h2>Existing mesh</h2>
+      <div class="grid2">
+        <label>Seen within
+          <select id="meshAge">
+            <option value="1">24 hours</option>
+            <option value="3" selected>3 days</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="0">All time</option>
+          </select>
+        </label>
+        <label>&nbsp;
+          <button id="loadMeshBtn" type="button" class="secondary">Load nodes</button>
+        </label>
+      </div>
+      <button id="meshCovBtn" type="button">Mesh coverage in view</button>
+      <p class="hint">Combined footprint of up to 25 in-view repeaters;
+      transparent holes = placement gaps.</p>
+    </details>
+
+    <details open id="potentialSection">
+      <summary>Community potential sites</summary>
       <p class="hint">Nice, <i>accessible</i> spots the community has
       identified for future repeaters — shared with everyone via D1.</p>
       <button id="potShowBtn" type="button" class="secondary">Show potential sites</button>
@@ -75,24 +96,6 @@
       <p class="hint">Pin colors: amber = idea · orange = scouted ·
       blue = owner contacted · green = approved · gray = declined.</p>
 
-      <h2>Existing mesh</h2>
-      <div class="grid2">
-        <label>Seen within
-          <select id="meshAge">
-            <option value="1">24 hours</option>
-            <option value="3" selected>3 days</option>
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="0">All time</option>
-          </select>
-        </label>
-        <label>&nbsp;
-          <button id="loadMeshBtn" type="button" class="secondary">Load nodes</button>
-        </label>
-      </div>
-      <button id="meshCovBtn" type="button">Mesh coverage in view</button>
-      <p class="hint">Combined footprint of up to 25 in-view repeaters;
-      transparent holes = placement gaps.</p>
     </details>
 
     <details open>
@@ -251,8 +254,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=18"></script>
-<script src="itm.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="antennas.js?v=19"></script>
+<script src="itm.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

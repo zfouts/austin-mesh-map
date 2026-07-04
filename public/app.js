@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 18;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 19;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
