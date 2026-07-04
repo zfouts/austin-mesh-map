@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 15;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 16;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -1626,7 +1626,7 @@ function populateAntennaSelects() {
     c.textContent = "Custom";
     sel.appendChild(c);
   }
-  $("txAntPreset").value = "ya913";
+  $("txAntPreset").value = "p1pro";
   $("rxAntPreset").value = "muzi17";
 }
 

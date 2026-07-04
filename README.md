@@ -13,8 +13,10 @@ general-purpose 915 MHz coverage mapper for anyone else.
 
 Interactive antenna coverage maps in the browser, built on open data. Click the
 map to place a transmitter, and it renders a terrain-aware signal-strength
-overlay on OpenStreetMap. Defaults are set for a 1 W / 13 dBi yagi at 915 MHz
-talking to LoRa-class receivers, but everything is adjustable.
+overlay on OpenStreetMap. Defaults are set for a Seeed SenseCAP P1 Pro
+(22 dBm) with a 5 dBi omni talking to LoRa-class receivers — the typical
+MeshCore repeater build — but everything is adjustable, including a
+34-antenna catalog and directional yagi support.
 
 Runs as a Cloudflare Worker: static assets plus a tiny edge function that
 proxies and caches elevation tiles, so anyone can use it at a public URL.

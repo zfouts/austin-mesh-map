@@ -18,6 +18,7 @@ const ANTENNA_CATALOG = [
     base: 13.2, vswr: 1.179, omni: false, beamwidth: 35, f2b: 20 },
 
   // -------- base-station omnis (N-type, fixed mount)
+  { id: "p1pro", group: "Base-station omni", name: "SenseCAP P1 Pro stock omni", base: 5, vswr: 1.5 },
   { id: "rokland58", group: "Base-station omni", name: "Rokland 5.8 dBi large fiberglass", base: 5.8, vswr: 1.013 },
   { id: "rak8", group: "Base-station omni", name: "RAKwireless 8 dBi fiberglass", base: 8, vswr: 1.955 },
   { id: "hexa8", group: "Base-station omni", name: "Hexa Boost fiberglass", base: 6, claim: "8", vswr: 1.124 },
