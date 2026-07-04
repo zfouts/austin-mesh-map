@@ -1,0 +1,13 @@
+{
+  "name": "austin-mesh-map",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client-side RF coverage mapper (915 MHz and friends) on Cloudflare Workers",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.107.0"
+  }
+}

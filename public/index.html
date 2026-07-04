@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Austin Mesh Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="style.css?v=15">
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>Austin Mesh Map</h1>
+
+    <div class="mode-row">
+      <label class="row"><input type="radio" name="mode" id="modeCoverage" checked> Coverage</label>
+      <label class="row"><input type="radio" name="mode" id="modeNetwork"> Multi-site P2P</label>
+    </div>
+
+    <div class="addr-row">
+      <input type="text" id="addrInput" placeholder="Find address or place…">
+      <button id="addrGo" type="button" class="mini">Go</button>
+    </div>
+
+    <p class="hint" id="placeHint">Click the map to place your transmitter.</p>
+
+    <details open id="networkSection" hidden>
+      <summary>Sites &amp; repeaters</summary>
+      <div id="siteList"></div>
+      <div class="grid2">
+        <label>Repeater h (m)
+          <input type="number" id="repHeight" value="10" min="1" max="200" step="1">
+        </label>
+        <label>Repeater dBi
+          <input type="number" id="repGain" value="2.2" min="-5" max="15" step="0.1">
+        </label>
+      </div>
+      <button id="repeaterBtn" type="button">Suggest repeater sites</button>
+      <button id="clearSitesBtn" type="button" class="secondary">Clear all sites</button>
+
+      <h2>Existing mesh</h2>
+      <div class="grid2">
+        <label>Seen within
+          <select id="meshAge">
+            <option value="1">24 hours</option>
+            <option value="3" selected>3 days</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="0">All time</option>
+          </select>
+        </label>
+        <label>&nbsp;
+          <button id="loadMeshBtn" type="button" class="secondary">Load nodes</button>
+        </label>
+      </div>
+      <button id="meshCovBtn" type="button">Mesh coverage in view</button>
+      <p class="hint">Combined footprint of up to 25 in-view repeaters;
+      transparent holes = placement gaps.</p>
+    </details>
+
+    <details open>
+      <summary>Transmitter</summary>
+      <label>Antenna
+        <select id="txAntPreset"></select>
+      </label>
+      <div class="grid2">
+        <label>Power (dBm)
+          <input type="number" id="txPower" value="30" min="-10" max="60" step="0.5">
+          <span class="sub" id="txWatts">= 1.00 W</span>
+        </label>
+        <label>Gain (dBi)
+          <input type="number" id="txGain" value="13" min="-5" max="30" step="0.1">
+        </label>
+        <label>Height AGL (m)
+          <input type="number" id="txHeight" value="10" min="1" max="500" step="1">
+        </label>
+        <label>Freq (MHz)
+          <input type="number" id="freq" value="915" min="30" max="6000" step="1">
+        </label>
+      </div>
+      <label class="row">
+        <input type="checkbox" id="omni">
+        Treat as omnidirectional
+      </label>
+      <div id="dirControls">
+        <label>Boresight bearing — <span id="bearingVal">0</span>° from north
+          <input type="range" id="bearing" value="0" min="0" max="359" step="1">
+        </label>
+        <div class="grid2">
+          <label>Beamwidth (°)
+            <input type="number" id="beamwidth" value="30" min="5" max="180" step="1">
+          </label>
+          <label>F/B ratio (dB)
+            <input type="number" id="f2b" value="18" min="5" max="40" step="1">
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Receiver</summary>
+      <label>Radio preset
+        <select id="rxPreset">
+          <option value="-120" selected>LoRa, conservative (−120 dBm)</option>
+          <option value="-121">MeshCore US (910.525, SF10/250)</option>
+          <option value="-126">Meshtastic LongFast (−126 dBm)</option>
+          <option value="-137">LoRa SF12/125 kHz (−137 dBm)</option>
+          <option value="-105">GFSK telemetry (−105 dBm)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>RX antenna
+        <select id="rxAntPreset"></select>
+      </label>
+      <div class="grid2">
+        <label>Sensitivity (dBm)
+          <input type="number" id="rxSens" value="-120" min="-150" max="-60" step="1">
+        </label>
+        <label>Gain (dBi)
+          <input type="number" id="rxGain" value="2.2" min="-10" max="20" step="0.1">
+        </label>
+        <label>Height AGL (m)
+          <input type="number" id="rxHeight" value="2" min="0.5" max="100" step="0.5">
+        </label>
+      </div>
+      <p class="hint">Directional RX antennas are modeled as aimed at the TX.</p>
+    </details>
+
+    <details>
+      <summary>Model</summary>
+      <label>Path model
+        <select id="pathModel">
+          <option value="itm" selected>ITM Longley-Rice v1.2.2</option>
+          <option value="p1812">Delta-Bullington (P.1812-style, CloudRF-like)</option>
+          <option value="deygout">Two-edge Deygout (fast)</option>
+        </select>
+      </label>
+      <label>Environment (clutter)
+        <select id="env">
+          <option value="auto" selected>Auto — NLCD land cover (US)</option>
+          <option value="0">Open / flat rural (0 dB)</option>
+          <option value="6">Rural with trees (6 dB/end)</option>
+          <option value="12">Suburban (12 dB/end)</option>
+          <option value="18">Dense urban (18 dB/end)</option>
+        </select>
+      </label>
+      <div class="grid2">
+        <label>Fade margin (dB)
+          <input type="number" id="margin" value="6" min="0" max="40" step="1">
+        </label>
+        <label>Max radius (km)
+          <input type="number" id="radius" value="30" min="2" max="150" step="1">
+        </label>
+      </div>
+      <p class="hint">ITM / delta-Bullington drive inspection, links and
+      repeater picks; heatmaps use Deygout for speed. Auto clutter reads NLCD
+      land cover at each antenna end (US), fading out above ~20 m AGL.</p>
+    </details>
+
+    <button id="updateBtn" disabled>Compute coverage</button>
+    <div id="status" class="status"></div>
+    <div id="budget" class="budget"></div>
+
+    <div id="legendBlock" hidden>
+      <h2>Received signal (dBm)</h2>
+      <div id="legend"></div>
+      <div id="mechLegend" hidden>
+        <h2>Path mechanism (why)</h2>
+        <div class="legend-row"><span class="legend-swatch" style="background:#1baf7a"></span>Clear line-of-sight</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#eda100"></span>Fresnel-zone graze (&lt;6 dB)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#eb6834"></span>One ridge diffracting</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#4a3aa7"></span>Two+ ridges diffracting</div>
+      </div>
+      <p class="hint">Click the map to inspect any point. Extra layers
+      (hillshade, mechanism, repeater scores) live in the top-right control.</p>
+    </div>
+
+    <details class="about">
+      <summary>How it's calculated</summary>
+      <p class="fine">Every prediction is a link budget over real terrain:</p>
+      <p class="fine">
+      <b>RX power</b> = TX power + both antenna gains − path loss − clutter −
+      fade margin, compared against receiver sensitivity.<br><br>
+      <b>Path loss</b>: NTIA ITM (Longley-Rice v1.2.2) for links, inspection
+      and repeater picks; two-edge Deygout diffraction for heatmaps. Terrain
+      from AWS Terrain Tiles (~15–30 m) with 4/3-earth curvature.<br><br>
+      <b>Clutter</b>: 0–18 dB per antenna end by environment, fading out above
+      ~20 m AGL. <b>Antennas</b>: honest physical gains minus measured VSWR
+      mismatch (rfindex.com).<br><br>
+      <b>Repeaters</b>: maximin grid search — the pick is the spot whose
+      <i>worst</i> link to any site is best.</p>
+      <p class="fine"><a href="/how">Full explanation with formulas &rarr;</a></p>
+    </details>
+
+    <details class="about">
+      <summary>About</summary>
+      <p class="fine"><span id="ver"></span>Calibrated against observed Austin
+      MeshCore links (scope.digitaino.com). Open source stack: Leaflet,
+      OpenStreetMap, Esri imagery/hillshade, AWS Terrain Tiles, NTIA ITM.</p>
+    </details>
+  </aside>
+  <div id="main">
+    <div id="map"></div>
+    <div id="profile" hidden>
+      <div id="profileHeader">
+        <span id="profileTitle"></span>
+        <button id="profileClose" type="button" title="Close">&times;</button>
+      </div>
+      <svg id="profileSvg" preserveAspectRatio="none"></svg>
+      <div id="profileTip" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="antennas.js?v=15"></script>
+<script src="itm.js?v=15"></script>
+<script src="app.js?v=15"></script>
+</body>
+</html>

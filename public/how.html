@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Austin Mesh Map calculates things</title>
+<style>
+  :root {
+    --bg: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e;
+    --muted: #898781; --hairline: #e1e0d9; --accent: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7;
+      --muted: #898781; --hairline: #2c2c2a; --accent: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 18px; margin: 34px 0 10px; border-bottom: 1px solid var(--hairline);
+       padding-bottom: 6px; }
+  p, li { color: var(--ink2); }
+  strong { color: var(--ink); }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 6px;
+  }
+  code { padding: 1px 5px; }
+  pre { padding: 12px 14px; overflow-x: auto; color: var(--ink); }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--hairline);
+           color: var(--ink2); }
+  th { color: var(--ink); font-weight: 600; }
+  .back { display: inline-block; margin-bottom: 20px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; back to the map</a>
+  <h1>How the map is calculated</h1>
+  <p class="sub">Every number on the map comes from a physical link budget over
+  real terrain — here is the whole chain, with nothing hidden.</p>
+
+  <h2>1. The link budget</h2>
+  <p>For any path from a transmitter to a receiver, the predicted received
+  power is:</p>
+  <pre>RX power = TX power + TX antenna gain + RX antenna gain
+         − path loss (terrain model, below)
+         − clutter loss (environment, both ends)
+         − fade margin</pre>
+  <p>A point is "covered" when RX power clears the receiver's sensitivity
+  (e.g. −126&nbsp;dBm for Meshtastic LongFast). The difference is the
+  <strong>margin</strong> shown throughout the app — positive margins are dB
+  of headroom against real-world messiness.</p>
+
+  <h2>2. Terrain</h2>
+  <p>Elevation comes from the open
+  <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>
+  dataset (SRTM-derived, ~30&nbsp;m; ~15&nbsp;m USGS 3DEP data in the US at
+  close zoom). Every path is sampled every few dozen meters, and terrain is
+  dropped relative to the transmitter's tangent plane using the standard
+  4/3-effective-earth-radius convention, which is how atmospheric refraction
+  and the radio horizon are conventionally modeled. Note SRTM partially
+  includes tree canopy — a forested ridge reads slightly taller than its dirt.</p>
+
+  <h2>3. Path loss — three engines</h2>
+  <p><strong>ITM (Longley-Rice v1.2.2)</strong> — used for point inspection,
+  point-to-point links, and repeater candidate scoring. This is a JavaScript
+  port of the <a href="https://github.com/NTIA/itm">NTIA reference
+  implementation</a> (public domain), the same algorithm behind SPLAT! and
+  commercial planning tools. It analyzes the full terrain profile: horizon
+  angles and distances, effective antenna heights, the Δh terrain-irregularity
+  statistic, two-ray reflection in line-of-sight, blended knife-edge +
+  smooth-earth diffraction beyond the horizon, troposcatter at extreme range,
+  and climate-based statistical variability (predictions are the 50/50
+  median).</p>
+  <p><strong>Delta-Bullington (P.1812-style)</strong> — selectable in the
+  Model section. This is the diffraction construction at the heart of ITU-R
+  P.1812, the model CloudRF defaults to for LoRa — meaning most MeshCore
+  community coverage maps (e.g. the meshcore.co.uk map) are generated with
+  this family. Our implementation covers the diffraction core (Bullington on
+  the actual profile plus a spherical-earth correction via a smooth-profile
+  Bullington) and omits P.1812's ducting/troposcatter/variability terms —
+  hence "-style". For reference, the open-source Meshtastic Site Planner uses
+  the same ITM engine we default to, so both community conventions are
+  represented here.</p>
+  <p><strong>Two-edge Deygout</strong> — used for coverage heatmaps, where ITM
+  would be ~650,000× too slow. Free-space loss plus ITU-R&nbsp;P.526 knife-edge
+  diffraction over the dominant terrain edge (picked by maximum elevation
+  angle from the transmitter) and the strongest secondary edge beyond it.
+  Faithful for one or two ridges; optimistic beyond three.</p>
+
+  <h2>4. Clutter and fading</h2>
+  <p>Terrain models don't know about buildings and trees, so a clutter loss
+  is added at each antenna end. In the default <strong>Auto</strong> mode the
+  value comes from <strong>NLCD land cover</strong> (30&nbsp;m, US only) at
+  that end's actual location — dense urban 20&nbsp;dB, forest 15, low-density
+  residential 12, grassland 3, open water 0, and so on — so a receiver in the
+  Barton Creek greenbelt is penalized differently than one in a parking lot.
+  Outside the US (or if the data is unavailable) it falls back to the manual
+  environment setting: 0 (open), 6 (rural trees), 12 (suburban), or
+  18&nbsp;dB (dense urban). Either way the loss fades linearly to zero as the
+  antenna rises above the ~20&nbsp;m clutter layer. A rooftop yagi at 10&nbsp;m eats half the penalty;
+  a tower eats none. The separate <strong>fade margin</strong> (default
+  6&nbsp;dB) reserves headroom for multipath fading.</p>
+
+  <h2>5. Antennas</h2>
+  <p>The antenna list uses <strong>honest gains</strong>: where a marketing
+  claim is physically impossible for the antenna's size (a 17&nbsp;cm whip is
+  a half-wave dipole, ~2.15&nbsp;dBi, no matter what the listing says), the
+  physics number is used and the claim is shown in the label. Measured VSWR
+  from the <a href="https://www.rfindex.com/mesh/antennas">Austin Mesh RF
+  Index</a> is converted to mismatch loss and subtracted — which is how a
+  "3&nbsp;dBi" antenna with VSWR 8.7 ends up modeled at −2.1&nbsp;dBi.
+  Directional antennas use a gaussian azimuth rolloff
+  (<code>G(θ) = G₀ − 12(θ/beamwidth)²</code>) clamped at the front-to-back
+  ratio.</p>
+
+  <h2>6. Repeater placement</h2>
+  <p>"Suggest repeater sites" is a <strong>maximin</strong> search: it lays a
+  42×42 grid (~1,700 candidates) over your sites' padded bounding box and
+  scores every candidate by its <em>worst</em> link margin to any site — a
+  repeater is only as good as its weakest leg. The grid pass screens with
+  Deygout for speed; finalists are re-scored with ITM. Up to 15 spaced picks
+  are shown, ranked best-first. Elevation is never an input — hilltops win
+  only because height wins line-of-sight in several directions at once, and a
+  well-placed saddle can and does beat a taller blocked summit.</p>
+
+  <h2>7. The explanatory layers</h2>
+  <table>
+    <tr><th>Layer</th><th>What it explains</th></tr>
+    <tr><td>Hillshade</td><td>The terrain driving every prediction, visible
+      under the overlays.</td></tr>
+    <tr><td>Path mechanism</td><td>How signal reaches each point: clear LOS
+      (green), Fresnel-zone graze (amber), one ridge diffracting (orange),
+      two+ ridges (violet). Distinguishes "blocked by terrain" from "ran out
+      of power."</td></tr>
+    <tr><td>Repeater search scores</td><td>The full scored candidate grid from
+      the last search — dark blue = strong worst-link margin, red = no
+      single-repeater solution there. Shows why R1 won and what the runner-up
+      regions were.</td></tr>
+  </table>
+
+  <h2>8. Accuracy, honestly</h2>
+  <p>The model chain was calibrated against observed links in the Austin
+  MeshCore network (via <a href="https://scope.digitaino.com">scope</a> reach
+  data): it correctly classifies the large majority of real links, and its
+  known misses are nodes on towers much taller than the assumed heights —
+  antenna height is the biggest unknown, since the mesh data doesn't include
+  it. Treat any single point prediction as roughly ±8–10&nbsp;dB; the
+  green/amber/red classifications and the <em>ranking</em> of repeater
+  candidates are more trustworthy than any absolute number. It also knows
+  nothing about land access — R1 may be in someone's back yard.</p>
+
+  <h2>Sources</h2>
+  <ul>
+    <li><a href="https://github.com/NTIA/itm">NTIA ITM</a> — Longley-Rice reference implementation (public domain)</li>
+    <li><a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a> — open elevation data</li>
+    <li><a href="https://www.rfindex.com/mesh/antennas">Austin Mesh RF Index</a> — measured antenna VSWR</li>
+    <li><a href="https://scope.digitaino.com">scope.digitaino.com</a> — live Austin MeshCore node data</li>
+    <li>ITU-R P.526 — knife-edge diffraction; ERL 79-ITS 67 / TN101 — the Longley-Rice papers</li>
+  </ul>
+</main>
+</body>
+</html>

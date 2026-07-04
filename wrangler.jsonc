@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "austin-mesh-map",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-03",
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+  // To serve on your own domain (zone must be on Cloudflare), uncomment:
+  // ,"routes": [{ "pattern": "radio-map.k8s.biz", "custom_domain": true }]
+}
