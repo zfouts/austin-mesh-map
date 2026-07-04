@@ -117,9 +117,52 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .hint { font-size: 12px; color: var(--text-secondary); margin: 6px 0; }
 
-.mode-row { display: flex; gap: 14px; margin: 8px 0; font-size: 12px;
-            color: var(--text-primary); }
-.mode-row label { margin: 0; color: var(--text-primary); }
+.title-row { display: flex; align-items: baseline; justify-content: space-between; }
+.how-link { font-size: 11px; color: var(--muted); text-decoration: none; }
+.how-link:hover { color: var(--accent); }
+
+.tabs {
+  display: flex; gap: 2px; margin: 10px 0 8px;
+  border: 1px solid var(--hairline); border-radius: 8px; padding: 2px;
+  background: var(--page);
+}
+.tab {
+  flex: 1; margin: 0; padding: 6px 2px; font-size: 12px; font-weight: 600;
+  background: none; color: var(--text-secondary); border: none;
+  border-radius: 6px; cursor: pointer;
+}
+.tab.active { background: var(--accent); color: #fff; }
+
+textarea {
+  display: block; width: 100%; margin-top: 3px; padding: 5px 7px;
+  font: inherit; font-size: 12px; color: var(--text-primary); resize: vertical;
+  background: var(--page); border: 1px solid var(--hairline); border-radius: 6px;
+}
+
+.pot-detail {
+  border: 1px solid var(--hairline); border-radius: 8px;
+  padding: 10px 12px; margin-top: 10px; font-size: 12px;
+  color: var(--text-secondary);
+}
+.pd-head { display: flex; align-items: center; gap: 6px; color: var(--text-primary);
+           font-size: 13px; }
+.pd-head .site-del { margin-left: auto; }
+.pd-row { margin: 3px 0; }
+.sub2 { font-size: 11px; color: var(--muted); }
+.pd-actions { display: flex; gap: 6px; margin: 8px 0; }
+.pd-actions button { flex: 1; margin: 0; padding: 6px 2px; font-size: 11px; }
+.pd-note { border-top: 1px solid var(--hairline); padding: 5px 0; }
+.chip {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 99px; color: #fff; letter-spacing: 0.03em;
+}
+.chip-idea { background: #b87d00; }
+.chip-scouted { background: #eb6834; }
+.chip-contacted { background: #3987e5; }
+.chip-approved { background: #0ca30c; }
+.chip-declined { background: #898781; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+       vertical-align: baseline; }
 
 .addr-row { display: flex; gap: 6px; margin-top: 3px; }
 .addr-row input { flex: 1; margin-top: 0; }

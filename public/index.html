@@ -6,27 +6,53 @@
 <title>Austin Mesh Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <div id="app">
   <aside id="panel">
-    <h1>Austin Mesh Map</h1>
+    <div class="title-row">
+      <h1>Austin Mesh Map</h1>
+      <a class="how-link" href="/how">how&nbsp;it&nbsp;works</a>
+    </div>
 
-    <div class="mode-row">
-      <label class="row"><input type="radio" name="mode" id="modeCoverage" checked> Coverage</label>
-      <label class="row"><input type="radio" name="mode" id="modeNetwork"> Multi-site P2P</label>
+    <div class="tabs">
+      <button id="tabBtn-coverage" class="tab active" type="button">Coverage</button>
+      <button id="tabBtn-network" class="tab" type="button">Network</button>
+      <button id="tabBtn-community" class="tab" type="button">Community</button>
+      <button id="tabBtn-settings" class="tab" type="button">&#9881;</button>
     </div>
 
     <div class="addr-row">
-      <input type="text" id="addrInput" placeholder="Find address or place…">
+      <input type="text" id="addrInput" placeholder="Find address or place&hellip;">
       <button id="addrGo" type="button" class="mini">Go</button>
     </div>
 
-    <p class="hint" id="placeHint">Click the map to place your transmitter.</p>
+    <!-- ============================== COVERAGE ============================ -->
+    <div id="tab-coverage">
+      <p class="hint" id="placeHint">Click the map to place your transmitter,
+      then click anywhere to inspect a link.</p>
+      <button id="updateBtn" disabled>Compute coverage</button>
+      <div id="budget" class="budget"></div>
+      <div id="legendBlock" hidden>
+        <h2>Received signal (dBm)</h2>
+        <div id="legend"></div>
+        <div id="mechLegend" hidden>
+          <h2>Path mechanism (why)</h2>
+          <div class="legend-row"><span class="legend-swatch" style="background:#1baf7a"></span>Clear line-of-sight</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#eda100"></span>Fresnel-zone graze (&lt;6 dB)</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#eb6834"></span>One ridge diffracting</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:#4a3aa7"></span>Two+ ridges diffracting</div>
+        </div>
+        <p class="hint">More layers (hillshade, mechanism, repeater scores) in
+        the top-right map control.</p>
+      </div>
+    </div>
 
-    <details open id="networkSection" hidden>
-      <summary>Sites &amp; repeaters</summary>
+    <!-- ============================== NETWORK ============================= -->
+    <div id="tab-network" hidden>
+      <p class="hint">Click the map to add sites — every pair is evaluated as
+      a point-to-point link. Drag markers to move them.</p>
       <div id="siteList"></div>
       <div class="grid2">
         <label>Repeater h (m)
@@ -57,24 +83,38 @@
       <button id="meshCovBtn" type="button">Mesh coverage in view</button>
       <p class="hint">Combined footprint of up to 25 in-view repeaters;
       transparent holes = placement gaps.</p>
-    </details>
+    </div>
 
-    <details open id="potentialSection">
-      <summary>Community potential sites</summary>
+    <!-- ============================= COMMUNITY ============================ -->
+    <div id="tab-community" hidden>
       <p class="hint">Nice, <i>accessible</i> spots the community has
-      identified for future repeaters — shared with everyone via D1.</p>
-      <button id="potShowBtn" type="button" class="secondary">Show potential sites</button>
-      <button id="potProposeBtn" type="button">Propose a site (then click map)</button>
+      identified for future repeaters &mdash; who owns them, and who has
+      already asked. Click a pin for details.</p>
+      <button id="potProposeBtn" type="button">Propose a site</button>
+      <button id="potShowBtn" type="button" class="secondary">Reload sites</button>
+
       <div id="potForm" hidden>
-        <label>Name
-          <input type="text" id="potName" maxlength="60" placeholder="e.g. Water tower on FM 1826">
+        <h2>New potential site</h2>
+        <p class="hint">Click the map to drop the pin, or type the street
+        address and press Find.</p>
+        <label>Site / building name
+          <input type="text" id="potName" maxlength="60" placeholder="e.g. Deep Eddy water tower">
         </label>
-        <label>Why it's good / access notes
-          <input type="text" id="potNotes" maxlength="500" placeholder="e.g. friendly owner, power on site">
+        <label>Business / owner
+          <input type="text" id="potCompany" maxlength="80" placeholder="optional — who to ask">
+        </label>
+        <label>Street address
+          <div class="addr-row">
+            <input type="text" id="potAddress" maxlength="160" placeholder="auto-fills from the pin">
+            <button id="potAddrFind" type="button" class="mini">Find</button>
+          </div>
+        </label>
+        <label>Why it&rsquo;s good / access notes
+          <input type="text" id="potNotes" maxlength="500" placeholder="e.g. friendly owner, power on the roof">
         </label>
         <div class="grid2">
-          <label>Your name
-            <input type="text" id="potBy" maxlength="40" placeholder="optional">
+          <label>Roof / mast AGL (m)
+            <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
           </label>
           <label>Status
             <select id="potStatus">
@@ -84,29 +124,33 @@
               <option value="approved">Approved!</option>
             </select>
           </label>
-          <label>Height (m)
-            <input type="number" id="potHeight" value="10" min="1" max="200" step="1">
-          </label>
-          <label>&nbsp;
-            <button id="potSaveBtn" type="button" class="mini">Save</button>
-          </label>
         </div>
+        <label>Your name
+          <input type="text" id="potBy" maxlength="40" placeholder="optional">
+        </label>
+        <button id="potSaveBtn" type="button">Save potential site</button>
         <button id="potCancelBtn" type="button" class="secondary">Cancel</button>
       </div>
-      <p class="hint">Pin colors: amber = idea · orange = scouted ·
-      blue = owner contacted · green = approved · gray = declined.</p>
 
-    </details>
+      <div id="potDetail" class="pot-detail" hidden></div>
 
-    <details open>
-      <summary>Transmitter</summary>
+      <p class="hint">Pin colors: <span class="dot" style="background:#eda100"></span> idea
+      &middot; <span class="dot" style="background:#eb6834"></span> scouted
+      &middot; <span class="dot" style="background:#3987e5"></span> contacted
+      &middot; <span class="dot" style="background:#0ca30c"></span> approved
+      &middot; <span class="dot" style="background:#898781"></span> declined</p>
+    </div>
+
+    <!-- ============================== SETTINGS ============================ -->
+    <div id="tab-settings" hidden>
+      <h2>Transmitter</h2>
       <label>Antenna
         <select id="txAntPreset"></select>
       </label>
       <div class="grid2">
         <label>Power (dBm)
           <input type="number" id="txPower" value="22" min="-10" max="60" step="0.5">
-          <span class="sub" id="txWatts">= 1.00 W</span>
+          <span class="sub" id="txWatts">= 0.16 W</span>
         </label>
         <label>Gain (dBi)
           <input type="number" id="txGain" value="5" min="-5" max="30" step="0.1">
@@ -123,11 +167,11 @@
         Treat as omnidirectional
       </label>
       <div id="dirControls" style="display:none">
-        <label>Boresight bearing — <span id="bearingVal">0</span>° from north
+        <label>Boresight bearing &mdash; <span id="bearingVal">0</span>&deg; from north
           <input type="range" id="bearing" value="0" min="0" max="359" step="1">
         </label>
         <div class="grid2">
-          <label>Beamwidth (°)
+          <label>Beamwidth (&deg;)
             <input type="number" id="beamwidth" value="30" min="5" max="180" step="1">
           </label>
           <label>F/B ratio (dB)
@@ -135,17 +179,15 @@
           </label>
         </div>
       </div>
-    </details>
 
-    <details>
-      <summary>Receiver</summary>
+      <h2>Receiver</h2>
       <label>Radio preset
         <select id="rxPreset">
-          <option value="-120" selected>LoRa, conservative (−120 dBm)</option>
+          <option value="-120" selected>LoRa, conservative (&minus;120 dBm)</option>
           <option value="-121">MeshCore US (910.525, SF10/250)</option>
-          <option value="-126">Meshtastic LongFast (−126 dBm)</option>
-          <option value="-137">LoRa SF12/125 kHz (−137 dBm)</option>
-          <option value="-105">GFSK telemetry (−105 dBm)</option>
+          <option value="-126">Meshtastic LongFast (&minus;126 dBm)</option>
+          <option value="-137">LoRa SF12/125 kHz (&minus;137 dBm)</option>
+          <option value="-105">GFSK telemetry (&minus;105 dBm)</option>
           <option value="custom">Custom</option>
         </select>
       </label>
@@ -164,10 +206,8 @@
         </label>
       </div>
       <p class="hint">Directional RX antennas are modeled as aimed at the TX.</p>
-    </details>
 
-    <details>
-      <summary>Model</summary>
+      <h2>Model</h2>
       <label>Path model
         <select id="pathModel">
           <option value="itm" selected>ITM Longley-Rice v1.2.2</option>
@@ -177,7 +217,7 @@
       </label>
       <label>Environment (clutter)
         <select id="env">
-          <option value="auto" selected>Auto — NLCD land cover (US)</option>
+          <option value="auto" selected>Auto &mdash; NLCD land cover (US)</option>
           <option value="0">Open / flat rural (0 dB)</option>
           <option value="6">Rural with trees (6 dB/end)</option>
           <option value="12">Suburban (12 dB/end)</option>
@@ -192,52 +232,13 @@
           <input type="number" id="radius" value="30" min="2" max="150" step="1">
         </label>
       </div>
-      <p class="hint">ITM / delta-Bullington drive inspection, links and
-      repeater picks; heatmaps use Deygout for speed. Auto clutter reads NLCD
-      land cover at each antenna end (US), fading out above ~20 m AGL.</p>
-    </details>
-
-    <button id="updateBtn" disabled>Compute coverage</button>
-    <div id="status" class="status"></div>
-    <div id="budget" class="budget"></div>
-
-    <div id="legendBlock" hidden>
-      <h2>Received signal (dBm)</h2>
-      <div id="legend"></div>
-      <div id="mechLegend" hidden>
-        <h2>Path mechanism (why)</h2>
-        <div class="legend-row"><span class="legend-swatch" style="background:#1baf7a"></span>Clear line-of-sight</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#eda100"></span>Fresnel-zone graze (&lt;6 dB)</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#eb6834"></span>One ridge diffracting</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#4a3aa7"></span>Two+ ridges diffracting</div>
-      </div>
-      <p class="hint">Click the map to inspect any point. Extra layers
-      (hillshade, mechanism, repeater scores) live in the top-right control.</p>
+      <p class="fine"><span id="ver"></span>ITM / delta-Bullington drive links
+      and repeater picks; heatmaps use Deygout for speed. Auto clutter reads
+      NLCD land cover at each antenna end. Calibrated against observed Austin
+      MeshCore links. <a href="/how">Full explanation &rarr;</a></p>
     </div>
 
-    <details class="about">
-      <summary>How it's calculated</summary>
-      <p class="fine">Every prediction is a link budget over real terrain:</p>
-      <p class="fine">
-      <b>RX power</b> = TX power + both antenna gains − path loss − clutter −
-      fade margin, compared against receiver sensitivity.<br><br>
-      <b>Path loss</b>: NTIA ITM (Longley-Rice v1.2.2) for links, inspection
-      and repeater picks; two-edge Deygout diffraction for heatmaps. Terrain
-      from AWS Terrain Tiles (~15–30 m) with 4/3-earth curvature.<br><br>
-      <b>Clutter</b>: 0–18 dB per antenna end by environment, fading out above
-      ~20 m AGL. <b>Antennas</b>: honest physical gains minus measured VSWR
-      mismatch (rfindex.com).<br><br>
-      <b>Repeaters</b>: maximin grid search — the pick is the spot whose
-      <i>worst</i> link to any site is best.</p>
-      <p class="fine"><a href="/how">Full explanation with formulas &rarr;</a></p>
-    </details>
-
-    <details class="about">
-      <summary>About</summary>
-      <p class="fine"><span id="ver"></span>Calibrated against observed Austin
-      MeshCore links (scope.digitaino.com). Open source stack: Leaflet,
-      OpenStreetMap, Esri imagery/hillshade, AWS Terrain Tiles, NTIA ITM.</p>
-    </details>
+    <div id="status" class="status"></div>
   </aside>
   <div id="main">
     <div id="map"></div>
@@ -254,8 +255,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="antennas.js?v=19"></script>
-<script src="itm.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="antennas.js?v=20"></script>
+<script src="itm.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

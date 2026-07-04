@@ -1,0 +1,2 @@
+ALTER TABLE potential_sites ADD COLUMN address TEXT NOT NULL DEFAULT '';
+ALTER TABLE potential_sites ADD COLUMN company TEXT NOT NULL DEFAULT '';

@@ -29,6 +29,7 @@ export default {
       if (request.method === "GET") {
         const { results } = await env.DB.prepare(
           "SELECT s.id, s.name, s.notes, s.lat, s.lon, s.height_m, s.status, " +
+          "s.address, s.company, " +
           "s.submitted_by, s.created_at, COUNT(n.id) AS note_count " +
           "FROM potential_sites s LEFT JOIN potential_site_notes n ON n.site_id = s.id " +
           "GROUP BY s.id ORDER BY s.created_at DESC LIMIT 500").all();
@@ -58,10 +59,12 @@ export default {
         const VALID_STATUS = ["idea", "scouted", "contacted", "approved", "declined"];
         const status = VALID_STATUS.includes(body.status) ? body.status : "idea";
         const by = String(body.submitted_by || "").trim().slice(0, 40);
+        const address = String(body.address || "").trim().slice(0, 160);
+        const company = String(body.company || "").trim().slice(0, 80);
         const r = await env.DB.prepare(
-          "INSERT INTO potential_sites (name, notes, lat, lon, height_m, status, submitted_by, ip_hash) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
-          .bind(name, notes, lat, lon, height, status, by, ipHash).all();
+          "INSERT INTO potential_sites (name, notes, lat, lon, height_m, status, submitted_by, address, company, ip_hash) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at")
+          .bind(name, notes, lat, lon, height, status, by, address, company, ipHash).all();
         return json({ ok: true, id: r.results[0].id }, 201);
       }
       return json({ error: "method not allowed" }, 405);

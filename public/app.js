@@ -8,7 +8,7 @@
 
 "use strict";
 
-const APP_VERSION = 19;            // bump with the ?v= stamps in index.html
+const APP_VERSION = 20;            // bump with the ?v= stamps in index.html
 
 // Served by our Worker, which proxies + edge-caches AWS Terrain Tiles.
 const TERRAIN_URL = (z, x, y) => `/terrain/${z}/${x}/${y}.png`;
@@ -932,7 +932,8 @@ function setTx(latlng) {
 
 map.on("click", e => {
   if (Date.now() - lastLinkClick < 300) return;    // click landed on a link line
-  if (proposing) { proposing = false; beginPotentialForm(e.latlng); return; }
+  if (proposing) { beginPotentialForm(e.latlng); return; }
+  if (mode === "community") return;                // pins only in community tab
   if (mode === "network") { addSite(e.latlng); return; }
   if (!txLatLng) setTx(e.latlng);
   else if (lastResult) inspectPoint(e.latlng);
@@ -949,15 +950,22 @@ let networkEnv = null;            // {elevAt, stepLen, lambda, freq, zoom}
 const linkLayer = L.layerGroup().addTo(map);
 const repeaterLayer = L.layerGroup().addTo(map);
 
-function setMode(m) {
-  mode = m;
-  $("networkSection").hidden = m !== "network";
-  $("placeHint").textContent = m === "network"
-    ? "Click the map to add sites; links between all pairs are evaluated."
-    : (txLatLng ? $("placeHint").textContent : "Click the map to place your transmitter.");
+const TABS = ["coverage", "network", "community", "settings"];
+function setTab(name) {
+  for (const t of TABS) {
+    $("tab-" + t).hidden = t !== name;
+    $("tabBtn-" + t).classList.toggle("active", t === name);
+  }
+  mode = name === "network" ? "network"
+       : name === "community" ? "community" : "coverage";
+  if (name === "network" && sites.length >= 2) scheduleLinks();
+  if (name === "community" && !potentialSites.length) {
+    loadPotentialSites().then(n => {
+      if (n) statusEl.textContent = `${n} community potential sites loaded.`;
+    }).catch(() => {});
+  }
 }
-$("modeCoverage").addEventListener("change", () => setMode("coverage"));
-$("modeNetwork").addEventListener("change", () => setMode("network"));
+TABS.forEach(t => $("tabBtn-" + t).addEventListener("click", () => setTab(t)));
 
 function siteIcon(n) {
   return L.divIcon({ className: "site-icon", html: String(n),
@@ -1548,6 +1556,7 @@ let potentialSites = [];
 let proposing = false;
 let pendingPot = null;            // {latlng, marker} while the form is open
 const potentialLayer = L.layerGroup();
+const potLinkLayer = L.layerGroup().addTo(map);
 
 const potIcon = (status = "idea") => L.divIcon({
   className: `pot-icon pot-${status}`, html: "P",
@@ -1559,76 +1568,16 @@ async function loadPotentialSites() {
   potentialSites = (await r.json()).sites;
   potentialLayer.clearLayers();
   potentialSites.forEach((ps, i) => {
-    L.marker([ps.lat, ps.lon], { icon: potIcon(ps.status) }).bindPopup(() =>
-      `<b>${escapeHtml(ps.name)}</b> — <b>${escapeHtml(ps.status)}</b><br>` +
-      (ps.notes ? `${escapeHtml(ps.notes)}<br>` : "") +
-      `${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · ${ps.height_m} m planned<br>` +
-      `<span class="sub">added ${String(ps.created_at).slice(0, 10)}` +
-      (ps.submitted_by ? ` by ${escapeHtml(ps.submitted_by)}` : "") +
-      ` · ${ps.note_count || 0} update${ps.note_count === 1 ? "" : "s"}</span><br>` +
-      `<button onclick="window.__potNotes(${i})">Updates / add note</button>` +
-      `<button onclick="window.__potCov(${i})">Show coverage</button>` +
-      `<button onclick="window.__potAdd(${i})">Add as site</button>`
-    ).addTo(potentialLayer);
+    L.marker([ps.lat, ps.lon], { icon: potIcon(ps.status), title: ps.name })
+      .on("click", () => { setTab("community"); openPotDetail(i); })
+      .addTo(potentialLayer);
   });
   if (!map.hasLayer(potentialLayer)) potentialLayer.addTo(map);
   return potentialSites.length;
 }
 
-window.__potCov = i => {
-  const ps = potentialSites[i];
-  if (!ps) return;
-  window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
-};
-window.__potAdd = i => {
-  const ps = potentialSites[i];
-  if (!ps) return;
-  map.closePopup();
-  addSite(L.latLng(ps.lat, ps.lon), ps.height_m, +$("repGain").value);
-};
-
-window.__potNotes = async i => {
-  const ps = potentialSites[i];
-  if (!ps) return;
-  try {
-    const r = await fetch(`/api/potential-sites/${ps.id}/notes`);
-    const thread = (await r.json()).notes || [];
-    const lines = thread.map(n =>
-      `${String(n.created_at).slice(0, 10)} ${n.author ? n.author + ": " : ""}${n.note}`);
-    const existing = lines.length
-      ? `Updates on "${ps.name}":\n\n${lines.join("\n")}\n\n`
-      : `No updates yet on "${ps.name}".\n\n`;
-    const note = prompt(existing +
-      "Add an update (e.g. \"talked to the manager, wants a one-pager\") — or Cancel:");
-    if (!note || !note.trim()) return;
-    const status = prompt(
-      "New status? idea / scouted / contacted / approved / declined\n" +
-      `(blank keeps "${ps.status}")`, "");
-    const author = prompt("Your name (optional):", "") || "";
-    const pr = await fetch(`/api/potential-sites/${ps.id}/notes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note: note.trim(), author: author.trim(),
-                             status: (status || "").trim().toLowerCase() }),
-    });
-    if (!pr.ok) throw new Error((await pr.json()).error || `HTTP ${pr.status}`);
-    map.closePopup();
-    await loadPotentialSites();
-    statusEl.textContent = `Update saved on "${ps.name}".`;
-  } catch (err) {
-    statusEl.textContent = "Error: " + err.message;
-    statusEl.classList.add("error");
-  }
-};
-
 $("potShowBtn").addEventListener("click", () => {
-  if (map.hasLayer(potentialLayer) && potentialSites.length) {
-    map.removeLayer(potentialLayer);
-    $("potShowBtn").textContent = "Show potential sites";
-    return;
-  }
   loadPotentialSites().then(n => {
-    $("potShowBtn").textContent = "Hide potential sites";
     statusEl.textContent = `${n} community potential sites loaded.`;
   }).catch(err => {
     statusEl.textContent = "Error: " + err.message;
@@ -1636,19 +1585,53 @@ $("potShowBtn").addEventListener("click", () => {
   });
 });
 
+// ---- propose flow: click the map OR geocode a street address
+
 $("potProposeBtn").addEventListener("click", () => {
   proposing = true;
+  $("potDetail").hidden = true;
+  $("potForm").hidden = false;
   statusEl.classList.remove("error");
-  statusEl.textContent = "Click the map where the potential site is.";
+  statusEl.textContent = "Click the map where the site is, or type its address and press Find.";
 });
+
+async function reverseGeocode(lat, lon) {
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=json" +
+                          `&lat=${lat}&lon=${lon}`);
+    const js = await r.json();
+    return js.display_name || "";
+  } catch { return ""; }
+}
 
 function beginPotentialForm(latlng) {
   if (pendingPot) map.removeLayer(pendingPot.marker);
-  pendingPot = { latlng, marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
+  pendingPot = { latlng,
+    marker: L.marker(latlng, { icon: potIcon(), opacity: 0.6 }).addTo(map) };
   $("potForm").hidden = false;
-  $("potName").focus();
-  statusEl.textContent = `Proposing site at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} — fill in the form.`;
+  statusEl.textContent =
+    `Pin at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} — click again to move it.`;
+  if (!$("potAddress").value.trim()) {
+    reverseGeocode(latlng.lat, latlng.lng).then(addr => {
+      if (addr && !$("potAddress").value.trim()) $("potAddress").value = addr;
+    });
+  }
 }
+
+$("potAddrFind").addEventListener("click", async () => {
+  const q = $("potAddress").value.trim();
+  if (!q) return;
+  try {
+    statusEl.textContent = "Looking up address…";
+    const hit = await geocode(q);
+    const ll = L.latLng(+hit.lat, +hit.lon);
+    map.setView(ll, Math.max(map.getZoom(), 16));
+    beginPotentialForm(ll);
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  }
+});
 
 function cancelPotentialForm() {
   if (pendingPot) map.removeLayer(pendingPot.marker);
@@ -1656,11 +1639,13 @@ function cancelPotentialForm() {
   proposing = false;
   $("potForm").hidden = true;
 }
-
 $("potCancelBtn").addEventListener("click", cancelPotentialForm);
 
 $("potSaveBtn").addEventListener("click", async () => {
-  if (!pendingPot) return;
+  if (!pendingPot) {
+    statusEl.textContent = "Set the location first — click the map or use Find.";
+    return;
+  }
   const name = $("potName").value.trim();
   if (!name) { statusEl.textContent = "Give the site a name."; return; }
   try {
@@ -1669,6 +1654,8 @@ $("potSaveBtn").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
+        company: $("potCompany").value.trim(),
+        address: $("potAddress").value.trim(),
         notes: $("potNotes").value.trim(),
         lat: pendingPot.latlng.lat,
         lon: pendingPot.latlng.lng,
@@ -1679,15 +1666,150 @@ $("potSaveBtn").addEventListener("click", async () => {
     });
     if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
     cancelPotentialForm();
-    $("potName").value = ""; $("potNotes").value = "";
+    for (const id of ["potName", "potCompany", "potAddress", "potNotes"]) $(id).value = "";
     await loadPotentialSites();
-    $("potShowBtn").textContent = "Hide potential sites";
-    statusEl.textContent = `Saved — thanks! ${potentialSites.length} potential sites now shared.`;
+    statusEl.textContent = `Saved — ${potentialSites.length} potential sites now shared.`;
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
     statusEl.classList.add("error");
   }
 });
+
+// ---- detail panel: everything about one site, plus mesh-link analysis
+
+async function openPotDetail(i) {
+  const ps = potentialSites[i];
+  if (!ps) return;
+  cancelPotentialForm();
+  potLinkLayer.clearLayers();
+  const el = $("potDetail");
+  el.hidden = false;
+  el.innerHTML =
+    `<div class="pd-head"><b>${escapeHtml(ps.name)}</b>` +
+    `<span class="chip chip-${escapeHtml(ps.status)}">${escapeHtml(ps.status)}</span>` +
+    `<button class="site-del" id="pdClose" title="Close">×</button></div>` +
+    (ps.company ? `<div class="pd-row">Owner/business: <b>${escapeHtml(ps.company)}</b></div>` : "") +
+    (ps.address ? `<div class="pd-row">${escapeHtml(ps.address)}</div>` : "") +
+    `<div class="pd-row">${ps.lat.toFixed(5)}, ${ps.lon.toFixed(5)} · roof/mast ${ps.height_m} m AGL</div>` +
+    (ps.notes ? `<div class="pd-row">${escapeHtml(ps.notes)}</div>` : "") +
+    `<div class="pd-row sub2">added ${String(ps.created_at).slice(0, 10)}` +
+    (ps.submitted_by ? ` by ${escapeHtml(ps.submitted_by)}` : "") + `</div>` +
+    `<div class="pd-actions">` +
+    `<button id="pdLinks" type="button">Mesh links</button>` +
+    `<button id="pdCov" type="button">Coverage</button>` +
+    `<button id="pdAdd" type="button">Plan with it</button>` +
+    `</div>` +
+    `<div id="pdLinkResults"></div>` +
+    `<h2>Updates</h2>` +
+    `<div id="pdNotes"><span class="sub2">loading…</span></div>` +
+    `<textarea id="pdNote" rows="2" maxlength="500" ` +
+    `placeholder="Add an update — e.g. talked to the manager 7/4, wants a one-pager"></textarea>` +
+    `<div class="grid2">` +
+    `<input type="text" id="pdAuthor" maxlength="40" placeholder="your name (optional)">` +
+    `<select id="pdStatus"><option value="">keep status</option>` +
+    `<option value="idea">idea</option><option value="scouted">scouted</option>` +
+    `<option value="contacted">contacted</option><option value="approved">approved</option>` +
+    `<option value="declined">declined</option></select></div>` +
+    `<button id="pdSave" type="button">Save update</button>`;
+
+  $("pdClose").onclick = () => { el.hidden = true; potLinkLayer.clearLayers(); };
+  $("pdCov").onclick = () =>
+    window.__showCov(ps.lat, ps.lon, ps.height_m, +$("repGain").value, ps.name);
+  $("pdAdd").onclick = () => {
+    addSite(L.latLng(ps.lat, ps.lon), ps.height_m, +$("repGain").value);
+    setTab("network");
+    statusEl.textContent = `"${ps.name}" added to the planning network.`;
+  };
+  $("pdLinks").onclick = () => checkPotMeshLinks(ps).catch(err => {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  });
+  $("pdSave").onclick = () => savePotUpdate(ps).catch(err => {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.classList.add("error");
+  });
+
+  try {
+    const r = await fetch(`/api/potential-sites/${ps.id}/notes`);
+    const notes = (await r.json()).notes || [];
+    $("pdNotes").innerHTML = notes.length
+      ? notes.map(n =>
+          `<div class="pd-note"><span class="sub2">${String(n.created_at).slice(0, 10)}` +
+          (n.author ? ` · ${escapeHtml(n.author)}` : "") + `</span><br>` +
+          `${escapeHtml(n.note)}</div>`).join("")
+      : `<span class="sub2">No updates yet — be the first to scout it.</span>`;
+  } catch { $("pdNotes").innerHTML = ""; }
+}
+
+async function savePotUpdate(ps) {
+  const note = $("pdNote").value.trim();
+  if (!note) { statusEl.textContent = "Write the update first."; return; }
+  const r = await fetch(`/api/potential-sites/${ps.id}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note, author: $("pdAuthor").value.trim(),
+                           status: $("pdStatus").value }),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+  await loadPotentialSites();
+  openPotDetail(potentialSites.findIndex(x => x.id === ps.id));
+  statusEl.textContent = `Update saved on "${ps.name}".`;
+}
+
+/* From this rooftop, can we reach the existing mesh? Full path-model links
+ * to the nearest active repeaters, drawn on the map and listed with margins. */
+async function checkPotMeshLinks(ps) {
+  statusEl.textContent = "Checking links to mesh repeaters…";
+  if (!meshNodes.length) await loadMeshNodes();
+  const p = readParams();
+  const cands = meshNodes
+    .filter(n => n.role === "repeater" && nodeFresh(n) && n.lat && n.lon)
+    .map(n => ({ n, dist: Math.hypot((n.lat - ps.lat) * 111320,
+        (n.lon - ps.lon) * 111320 * Math.cos(ps.lat * D2R)) }))
+    .filter(c => c.dist > 100 && c.dist < 40000)
+    .sort((a, c) => a.dist - c.dist)
+    .slice(0, 10);
+  if (!cands.length) {
+    $("pdLinkResults").innerHTML =
+      `<div class="pd-row sub2">No active mesh repeaters within 40 km.</div>`;
+    return;
+  }
+  const reach = cands[cands.length - 1].dist + 2000;
+  const z = pickZoom(ps.lat, reach);
+  failedTileKeys = [];
+  const lcJob = p.envAuto ? prefetchLandcover(ps.lat, ps.lon, reach) : null;
+  await prefetchTiles(ps.lat, ps.lon, reach, z,
+    (d, n) => { statusEl.textContent = `Fetching terrain… ${d}/${n}`; });
+  if (lcJob) await lcJob;
+  const mpp = 156543.034 * Math.cos(ps.lat * D2R) / 2 ** z;
+  const env = { elevAt: makeSampler(z), stepLen: Math.max(mpp, reach / 900),
+                lambda: 299.792458 / p.freq, freq: p.freq, model: p.model };
+  const g = +$("repGain").value, hNode = +$("repHeight").value;
+  potLinkLayer.clearLayers();
+  const rows = [];
+  for (const { n, dist } of cands) {
+    const res = tracePath(ps.lat, ps.lon, ps.height_m, n.lat, n.lon, hNode,
+                          env, env.model !== "deygout");
+    const margin = p.txPower + g + g - p.margin
+                 - clutterPair(p, ps.height_m, hNode, ps.lat, ps.lon, n.lat, n.lon)
+                 - res.loss - p.rxSens;
+    rows.push({ n, dist, margin });
+    L.polyline([[ps.lat, ps.lon], [n.lat, n.lon]],
+      { color: linkColor(margin), weight: 3, opacity: 0.8 }).addTo(potLinkLayer);
+    await new Promise(r2 => setTimeout(r2));
+  }
+  rows.sort((a, c) => c.margin - a.margin);
+  const ok = rows.filter(r => r.margin >= 0).length;
+  $("pdLinkResults").innerHTML =
+    `<div class="pd-row"><b>Reaches ${ok} of ${rows.length} nearest repeaters:</b></div>` +
+    rows.map(r =>
+      `<div class="pd-row"><span style="color:${linkColor(r.margin)}">●</span> ` +
+      `${escapeHtml(r.n.name)} — ${(r.dist / 1000).toFixed(1)} km, ` +
+      `${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(0)} dB</div>`).join("");
+  statusEl.textContent =
+    `"${ps.name}" reaches ${ok}/${rows.length} nearby repeaters (${p.model} model, ` +
+    `${ps.height_m} m roof).`;
+}
 
 // ------------------------------------------------------------ address search
 
@@ -1709,6 +1831,7 @@ $("addrGo").addEventListener("click", async () => {
     const ll = L.latLng(+hit.lat, +hit.lon);
     map.setView(ll, Math.max(map.getZoom(), 14));
     if (mode === "network") addSite(ll);
+    else if (mode === "community") { if (!$("potForm").hidden) beginPotentialForm(ll); }
     else setTx(ll);
     statusEl.textContent = hit.display_name;
   } catch (err) {
